@@ -65,6 +65,10 @@ chk "kvm trace off: only those lines removed" [ $(($(wc -l < $T/rc.full) - $(wc 
 chk "drm.debug only with DEBUG_LOGS=1" grep -q '^\[ "${DEBUG_LOGS:-0}" = 1 \] && echo 0x04 > /sys/module/drm/parameters/debug' usb/hook.sh
 
 # --- hook.sh: the rest
+chk "timberslide.rc removed from init" grep -q '^  rm -f /tmp/sysinit/timberslide.rc' usb/hook.sh
+chk "suspend_diagnostics masked, suspend_notification_service kept" grep -q '^mount --bind /tmp/empty.rc /new/vendor/etc/init/suspend_diagnostics.rc' usb/hook.sh
+nonotif() { ! grep -q 'empty.rc /new/vendor/etc/init/suspend_notification_service.rc' usb/hook.sh; }
+chk "suspend_notification_service not masked" nonotif
 chk "gscutil.rc removed from init" grep -q '^  rm -f /tmp/sysinit/gscutil.rc' usb/hook.sh
 chk "KVM trace only with KVM_TRACE=1" grep -q 'if \[ "${KVM_TRACE:-0}" != 1 \]; then' usb/hook.sh
 chk "gbos.rc gets the shutdown block" grep -qx '\$QUIETRC' usb/hook.sh

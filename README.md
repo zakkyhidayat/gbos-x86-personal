@@ -76,6 +76,7 @@ for hardware this laptop does not have:
 | KVM exit trace of the Trusty VM, ~30 MB written to the boot drive during boot | I/O and CPU | only with `KVM_TRACE=1` (both the ftrace events and the reader) |
 | Debug logging on every boot: full logcat (~10 MB to the boot drive), KMS debug, audio/display/AI diagnostics (dumpsys, pings) | I/O and CPU | only with `DEBUG_LOGS=1`; `kmsg.log`, `crash.txt`, `hw.txt` and `hwdetect.txt` are still written |
 | Kernel and init text drawn on the framebuffer console | slows the boot, and is ugly | `usb/quiet_boot.sh` |
+| Crash loops: `timberslide` (ChromeOS EC log, no EC here) 70 restarts, `suspend_notification_service` 346 restarts in 6 min, started again and again for `suspend_diagnostics` | CPU, log noise | `timberslide.rc` removed; `suspend_diagnostics` masked. The notification service itself stays (system_server may ask for it, and should keep failing fast rather than wait). Idea from [vthonte](#credits) |
 
 - `usb/quiet_boot.sh`, sourced from `gbos.cfg` as soon as the drive is found: the console only shows emergencies (a panic),
   the screen is cleared and the cursor hidden. Every message still goes to `logs/boot-N/kmsg.log`. If stage0 fails, its rescue
@@ -109,6 +110,12 @@ for hardware this laptop does not have:
   shell), the generated `gbos.rc` without the debug extras (and with the Trusty VM still started), and the fstab rewrite; give it the image's `fstab.android-desktop` to check on Google's real file.
 - The patch also adds `gbos_fp`, `tbnet.sh` and `quiet_boot.sh` to gbos-x86's image, deploy and installer scripts and documents
   the options in its `gbos.cfg` and README.
+
+## Credits
+- [linuxkid473/gbos-x86](https://github.com/linuxkid473/gbos-x86) (gbOS86): everything this builds on.
+- [libfprint](https://gitlab.freedesktop.org/libfprint/libfprint): the Synaptics protocol in `fingerprint/syn.h` (LGPL-2.1).
+- [vthonte/gbos86-persistent-dualboot](https://github.com/vthonte/gbos86-persistent-dualboot): the idea of turning off
+  `timberslide` and the `suspend_notification_service` / `suspend_diagnostics` loop on non-Chromebook hardware.
 
 ## Use
 
