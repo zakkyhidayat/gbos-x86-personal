@@ -3,7 +3,7 @@
 #   docker run --rm -v gbos-ksrc:/build -v <repo>:/repo gbos-kbuild sh /repo/kernel/isa_emu_patch/build_extra_module.sh \
 #     USB4_NET drivers/net/thunderbolt thunderbolt_net
 # For a VM: DRM_VIRTIO_GPU drivers/virtio virtio_dma_buf, then (EXTRA_SYMBOLS=/build/extmod/virtio_dma_buf/Module.symvers)
-#     DRM_VIRTIO_GPU drivers/gpu/drm/virtio virtio-gpu
+#     DRM_VIRTIO_GPU drivers/gpu/drm/virtio virtio-gpu  (with PATCH=kernel/isa_emu_patch/virtio-gpu-dumb-rgba.patch)
 # The module must match the running kernel exactly, so nothing is guessed:
 #   - config: the shipped kernel's own, read from the IKCONFIG embedded in usb/out/BOOTX64.EFI, plus CONFIG_<SYM>=m
 #   - symbol CRCs (CONFIG_MODVERSIONS): kernel/symvers_from_modules.py recovers them from the shipped usb/modules tree
@@ -62,6 +62,8 @@ for obj in $EXTRA_CRC_OBJS; do
 done
 [ -f $O/Module.symvers.extra ] && cat $O/Module.symvers.extra >> $O/Module.symvers && rm $O/Module.symvers.extra
 rm -rf /build/extmod/$MOD && cp -a /build/src/$DIR /build/extmod/$MOD
+# PATCH: a patch (paths relative to $DIR) applied to the copy, e.g. kernel/isa_emu_patch/virtio-gpu-dumb-rgba.patch.
+[ -z "$PATCH" ] || git -C /build/extmod/$MOD apply --unsafe-paths --directory= -p1 -v $R/$PATCH
 # EXTRA_SYMBOLS: Module.symvers of a module this one imports from (built by an earlier run, e.g. virtio_dma_buf for virtio-gpu).
 $M M=/build/extmod/$MOD ${EXTRA_SYMBOLS:+KBUILD_EXTRA_SYMBOLS=$EXTRA_SYMBOLS} modules 2>&1 | tee /build/extmod/$MOD.log | tail -n 20
 if grep -q 'WARNING: modpost:.*undefined\|has no CRC' /build/extmod/$MOD.log; then

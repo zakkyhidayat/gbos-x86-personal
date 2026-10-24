@@ -112,6 +112,10 @@ write goes to a temporary qcow2 overlay deleted on exit, so the laptop's own Goo
   not fast. No fingerprint, Wi-Fi (Ethernet instead), Bluetooth or real sound in the VM.
 - `sudo` only to give this user read access to the drive (`setfacl`, removed on exit); QEMU runs as the user. It refuses a
   disk without all four GBOS labels or the one Linux runs from, and unmounts the drive's partitions first.
+- Colours: virtio-gpu creates every dumb buffer as XRGB8888 while Android fills them as RGBA, so red and blue were
+  swapped; the module is built with `kernel/isa_emu_patch/virtio-gpu-dumb-rgba.patch` (RGBA dumb buffers).
+- Mouse: a plain USB mouse (Android ignores QEMU's absolute usb-tablet). Click into the window to capture, Ctrl+Alt+G to
+  release; the SDL window locks the desktop's pointer while captured (QEMU's GTK window does not on Wayland).
 - adb: `adb connect 127.0.0.1:5556`.
 - Tested on a disk image built from the drive's files: boots to Android's UI, base image unchanged (same md5 after),
   overlay removed.

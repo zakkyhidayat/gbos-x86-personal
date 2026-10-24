@@ -3,17 +3,18 @@
 # for testing apps. The drive is only ever READ. Everything the VM writes (data, settings, logs) goes to a temporary qcow2
 # overlay that is deleted when the VM exits, so the next boot on the laptop itself sees the drive exactly as before.
 #
-#   sh tools/run_vm.sh                 window (GTK), 6 GB RAM, 4 CPUs
+#   sh tools/run_vm.sh                 window (SDL), 6 GB RAM, 4 CPUs
 #   sh tools/run_vm.sh --disk IMG      a disk image file instead of the SSD (for testing this script)
 #   adb connect 127.0.0.1:5556         adb into the VM (USB debugging must already be on in the drive's Android)
 # Mouse: a plain USB mouse (Android ignores QEMU's usb-tablet, an absolute pointer). Click into the window to capture it,
-# Ctrl+Alt+G releases it.
+# Ctrl+Alt+G releases it. SDL locks the host pointer while captured; QEMU's GTK window does not on Wayland (the desktop's
+# cursor kept moving): VM_DISPLAY=gtk for its menus anyway.
 #   VM_DISPLAY=none VM_EXTRA="-qmp unix:/tmp/q.sock,server,nowait"   headless (for tests)
 #
 # Graphics: the VM has a virtio GPU; hook.sh loads gbos/kmod/virtio-gpu.ko for it (built by
 # kernel/isa_emu_patch/build_extra_module.sh) and Android draws with SwiftShader on the CPU: works, not fast. No fingerprint,
 # Wi-Fi (the VM's network shows as Ethernet), Bluetooth (its app may say it keeps stopping) or real sound.
-# Needs: qemu-system-x86_64 with GTK, OVMF (edk2-ovmf), /dev/kvm. sudo only to let this user READ the drive (setfacl), undone
+# Needs: qemu-system-x86_64 with SDL (qemu-ui-sdl), OVMF (edk2-ovmf), /dev/kvm. sudo only to let this user READ the drive (setfacl), undone
 # on exit. QEMU itself runs as this user.
 set -e
 MEM=${MEM:-6144} CPUS=${CPUS:-4}
@@ -61,4 +62,4 @@ qemu-system-x86_64 -name gbOS86-snapshot -machine q35,accel=kvm -cpu host -m "$M
   -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" -drive if=pflash,format=raw,file="$T/vars.fd" \
   -drive file="$T/overlay.qcow2",if=none,id=d0,format=qcow2 -device nvme,drive=d0,serial=gbosvm \
   -device e1000e,netdev=n0 -netdev user,id=n0,hostfwd=tcp:127.0.0.1:5556-:5555 \
-  -device qemu-xhci -device usb-mouse -device usb-kbd -device virtio-vga -display "${VM_DISPLAY:-gtk}" $VM_EXTRA
+  -device qemu-xhci -device usb-mouse -device usb-kbd -device virtio-vga -display "${VM_DISPLAY:-sdl}" $VM_EXTRA

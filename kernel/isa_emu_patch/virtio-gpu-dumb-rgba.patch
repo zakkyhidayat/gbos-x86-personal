@@ -1,0 +1,14 @@
+gbOS86 VM: dumb buffers in Android's byte order. A dumb buffer's virtio resource is created as XRGB8888 (bytes B,G,R,X)
+whatever is later drawn into it, and QEMU's 2D virtio-gpu shows a resource in its creation format. Android (minigbm's
+dumb backend, SwiftShader, SurfaceFlinger) fills them as RGBA_8888 (bytes R,G,B,A), so red and blue came out swapped.
+--- a/virtgpu_gem.c
++++ b/virtgpu_gem.c
+@@ -76,7 +76,7 @@
+ 	args->size = pitch * args->height;
+ 	args->size = ALIGN(args->size, __PAGE_SIZE);
+
+-	params.format = virtio_gpu_translate_format(DRM_FORMAT_HOST_XRGB8888);
++	params.format = virtio_gpu_translate_format(DRM_FORMAT_ABGR8888);
+ 	params.width = args->width;
+ 	params.height = args->height;
+ 	params.size = args->size;

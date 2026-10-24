@@ -9,7 +9,7 @@ G=${1:?usage: $0 /path/to/gbos-x86}
 [ -f "$G/usb/hook.sh" ] && git -C "$G" rev-parse --git-dir >/dev/null 2>&1 || { echo "$G is not a gbos-x86 checkout"; exit 1; }
 cd "$HERE"
 for f in fingerprint/build.sh fingerprint/gbos_fp.c fingerprint/syn.h fingerprint/syn_test.c \
-	 kernel/isa_emu_patch/build_extra_module.sh kernel/symvers_from_modules.py \
+	 kernel/isa_emu_patch/build_extra_module.sh kernel/isa_emu_patch/virtio-gpu-dumb-rgba.patch kernel/symvers_from_modules.py \
 	 tools/test_boot_quiet.sh tools/test_gbos_fp.sh tools/test_tbnet.sh usb/gbos_fp usb/kmod/thunderbolt_net.ko usb/kmod/virtio_dma_buf.ko usb/kmod/virtio-gpu.ko tools/run_vm.sh usb/quiet_boot.sh usb/tbnet.sh; do
   mkdir -p "$G/$(dirname "$f")"
   cp -p "$f" "$G/$f"
