@@ -81,8 +81,18 @@ for hardware this laptop does not have:
   the screen is cleared and the cursor hidden. Every message still goes to `logs/boot-N/kmsg.log`. If stage0 fails, its rescue
   shell brings the text back with the last 30 messages. The installer is left alone. `QUIET_BOOT=0` keeps the text.
 - At shutdown and restart, `gbos.rc` unbinds the framebuffer console, so no text appears after the desktop goes away.
-- Still visible: the first seconds of text, until the drive is found. That comes from the kernel's built-in command line and
-  stage0, both inside upstream's `BOOTX64.EFI`, and would need a boot loader that passes `quiet` (or a rebuilt kernel).
+- Still visible: the first ~8 s of text, until the drive is found. That comes from the kernel's built-in command line
+  (`loglevel=8 ignore_loglevel`) inside upstream's `BOOTX64.EFI`. Its config has `CMDLINE_BOOL=y` without `CMDLINE_OVERRIDE`,
+  so options given by the firmware are appended after the built-in ones and win. A firmware boot entry with options hides it
+  without touching the kernel (made once from Linux; it is not added to the boot order, pick "Googlebook" in the F12 menu;
+  it keeps working when the SSD moves inside, since it points at the partition's GUID):
+
+  ```sh
+  N=$(sudo efibootmgr -C -d /dev/sda -p 1 -L Googlebook -l '\EFI\BOOT\BOOTX64.EFI' \
+      -u 'quiet loglevel=1 printk.ignore_loglevel=0 vt.global_cursor_default=0' | sed -n 's/^Boot\([0-9A-F]\{4\}\)\* Googlebook.*/\1/p')
+  echo "Googlebook entry: Boot$N"
+  ```
+  Remove it with `sudo efibootmgr -b <N> -B`. Booting the drive the old way (its plain USB/NVMe entry) still works.
 - Not changed: stage0's 6 s wait for a USB stick labelled `GBOS` after `GBOSSYS` appears (also in `BOOTX64.EFI`), and
   hwdetect's driver loading (~5 s).
 
@@ -124,6 +134,7 @@ since the partitions are found by label.
 | `thunderbolt_net` loads | works |
 | Lock-screen unlock with a fingerprint | not checked yet |
 | adb over a Thunderbolt cable (link, routing) | not checked yet |
-| Quiet boot and shutdown, ~32 s less waiting, debug logging off | not checked yet |
+| Boot time: 67.6 s -> 29.2 s to `boot_completed` (boot-4, boot-5) | works |
+| No text after the drive is found; text at shutdown | works / still some, being checked |
 
 Logs: `gbos/logs/boot-N/` on the GBOSSYS partition.
