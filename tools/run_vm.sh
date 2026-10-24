@@ -6,6 +6,8 @@
 #   sh tools/run_vm.sh                 window (GTK), 6 GB RAM, 4 CPUs
 #   sh tools/run_vm.sh --disk IMG      a disk image file instead of the SSD (for testing this script)
 #   adb connect 127.0.0.1:5556         adb into the VM (USB debugging must already be on in the drive's Android)
+# Mouse: a plain USB mouse (Android ignores QEMU's usb-tablet, an absolute pointer). Click into the window to capture it,
+# Ctrl+Alt+G releases it.
 #   VM_DISPLAY=none VM_EXTRA="-qmp unix:/tmp/q.sock,server,nowait"   headless (for tests)
 #
 # Graphics: the VM has a virtio GPU; hook.sh loads gbos/kmod/virtio-gpu.ko for it (built by
@@ -59,4 +61,4 @@ qemu-system-x86_64 -name gbOS86-snapshot -machine q35,accel=kvm -cpu host -m "$M
   -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" -drive if=pflash,format=raw,file="$T/vars.fd" \
   -drive file="$T/overlay.qcow2",if=none,id=d0,format=qcow2 -device nvme,drive=d0,serial=gbosvm \
   -device e1000e,netdev=n0 -netdev user,id=n0,hostfwd=tcp:127.0.0.1:5556-:5555 \
-  -device qemu-xhci -device usb-tablet -device usb-kbd -device virtio-vga -display "${VM_DISPLAY:-gtk}" $VM_EXTRA
+  -device qemu-xhci -device usb-mouse -device usb-kbd -device virtio-vga -display "${VM_DISPLAY:-gtk}" $VM_EXTRA
