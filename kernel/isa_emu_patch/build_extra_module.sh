@@ -6,7 +6,7 @@
 #   - config: the shipped kernel's own, read from the IKCONFIG embedded in usb/out/BOOTX64.EFI, plus CONFIG_<SYM>=m
 #   - symbol CRCs (CONFIG_MODVERSIONS): kernel/symvers_from_modules.py recovers them from the shipped usb/modules tree
 #   - compiler: the same AOSP clang (r584948b), so kCFI type hashes and the mitigation thunks agree
-#   - vermagic: the shipped tree's kernel release (6.18.21-gbos-whl+), checked against the result
+#   - vermagic: the shipped tree's kernel release (6.18.21-gbos-whl since kernel #38), checked against the result
 # The module is built out of tree from a copy of the kernel's own directory and lands in usb/kmod/ (tracked, loaded
 # with insmod by usb/hook.sh, like btusb), so the downloaded usb/modules tree stays as released. It is not signed:
 # CONFIG_MODULE_SIG_FORCE is off, so it loads (tainting the kernel, like any out-of-tree module).
@@ -19,9 +19,12 @@ export PATH=$C/bin:$PATH LD_LIBRARY_PATH=$C/lib:${LD_LIBRARY_PATH:-}
 R=/repo
 TREE=$(ls -d $R/usb/modules/lib/modules/*/ | head -1); TREE=${TREE%/}
 REL=$(basename "$TREE")
+# The release is CONFIG_LOCALVERSION plus whatever setlocalversion appends: "+" for kernels built from a modified checkout
+# (#37, tree r4), nothing since #38 pins it (tree r5). LOCALVERSION set (even empty) stops setlocalversion guessing.
+case "$REL" in *+) LV=+;; *) LV=;; esac
 O=/build/out_extra
-M="make -C /build/src O=$O ARCH=x86_64 LLVM=$C/bin/ CC=$C/bin/clang"
-mkdir -p $O /build/extmod
+M="make -C /build/src O=$O ARCH=x86_64 LLVM=$C/bin/ CC=$C/bin/clang LOCALVERSION=$LV"
+rm -rf $O && mkdir -p $O /build/extmod
 
 # shipped config: BOOTX64.EFI carries an lz4 (legacy) kernel payload, inside it IKCFG_ST <gzip> IKCFG_ED
 python3 - "$R/usb/out/BOOTX64.EFI" "$O/.config" <<'EOF'
@@ -36,14 +39,13 @@ grep -q '^CONFIG_MODVERSIONS=y' $O/.config || { echo "embedded config not found"
 /build/src/scripts/config --file $O/.config --module "$SYM"
 $M olddefconfig >/dev/null
 grep -q "^CONFIG_$SYM=m" $O/.config || { echo "CONFIG_$SYM=m did not survive olddefconfig (missing dependency?)"; exit 1; }
-# LOCALVERSION=+ reproduces the shipped release string (its tree was built from a modified checkout)
-$M LOCALVERSION=+ modules_prepare >/dev/null
-got=$($M -s LOCALVERSION=+ kernelrelease)
+$M modules_prepare >/dev/null
+got=$($M -s kernelrelease)
 [ "$got" = "$REL" ] || { echo "kernel release $got differs from the shipped $REL"; exit 1; }
 
 python3 $R/kernel/symvers_from_modules.py "$TREE" $O/Module.symvers
 rm -rf /build/extmod/$MOD && cp -a /build/src/$DIR /build/extmod/$MOD
-$M LOCALVERSION=+ M=/build/extmod/$MOD modules 2>&1 | tee /build/extmod/$MOD.log | tail -n 20
+$M M=/build/extmod/$MOD modules 2>&1 | tee /build/extmod/$MOD.log | tail -n 20
 if grep -q 'WARNING: modpost:.*undefined\|has no CRC' /build/extmod/$MOD.log; then
   echo "modpost could not resolve every imported symbol's CRC: refusing to ship"; exit 1
 fi

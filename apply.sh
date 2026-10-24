@@ -1,6 +1,6 @@
 #!/bin/sh
 # Put this overlay onto a gbos-x86 checkout (github.com/linuxkid473/gbos-x86): copies the files of this repo into it and
-# applies patches/gbos-x86-changes.patch to the upstream files it changes. Made against upstream 71f7ef2; on a newer
+# applies patches/gbos-x86-changes.patch to the upstream files it changes. Made against upstream 729b9c3 (kernel #42, modules r5); on a newer
 # upstream the patch is applied with --3way, so conflicts show up as conflict markers instead of failing silently.
 # Usage: ./apply.sh /path/to/gbos-x86
 set -e

@@ -64,7 +64,7 @@ index 56b5acc..db39f95 100644
     `hook.sh`/`apex_patch.sh` pin the exact originals they apply to. KernelSU's manager app and daemon
     come from the KernelSU release (`build.sh` puts them in `usb/ksu/`).
 diff --git a/tools/deploy_stick.sh b/tools/deploy_stick.sh
-index 2fac3a6..c707ddc 100755
+index f6a27e9..9079dd2 100755
 --- a/tools/deploy_stick.sh
 +++ b/tools/deploy_stick.sh
 @@ -23,7 +23,7 @@ put() {  # put SRC DST(relative to gbos/): copy when different
