@@ -89,9 +89,12 @@ for hardware this laptop does not have:
 
   ```sh
   N=$(sudo efibootmgr -C -d /dev/sda -p 1 -L Googlebook -l '\EFI\BOOT\BOOTX64.EFI' \
-      -u 'quiet loglevel=1 printk.ignore_loglevel=0 vt.global_cursor_default=0' | sed -n 's/^Boot\([0-9A-F]\{4\}\)\* Googlebook.*/\1/p')
+      -u 'quiet loglevel=1 printk.ignore_loglevel=0 vt.global_cursor_default=0 console=ttynull' | sed -n 's/^Boot\([0-9A-F]\{4\}\)\* Googlebook.*/\1/p')
   echo "Googlebook entry: Boot$N"
   ```
+  `console=ttynull` (the kernel has `CONFIG_NULL_TTY=y`) also hides what stage0's shell prints to `/dev/console` (e.g.
+  `mknod: /dev/mapper/control: File exists`); the boot menu, installer and rescue shell write to `/dev/tty1` and stay visible.
+  ThinkPad's F12 menu only lists entries in the boot order: add it after Fedora with `sudo efibootmgr -o 0001,<N>,...`.
   Remove it with `sudo efibootmgr -b <N> -B`. Booting the drive the old way (its plain USB/NVMe entry) still works.
 - Not changed: stage0's 6 s wait for a USB stick labelled `GBOS` after `GBOSSYS` appears (also in `BOOTX64.EFI`), and
   hwdetect's driver loading (~5 s).
@@ -135,6 +138,7 @@ since the partitions are found by label.
 | Lock-screen unlock with a fingerprint | not checked yet |
 | adb over a Thunderbolt cable (link, routing) | not checked yet |
 | Boot time: 67.6 s -> 29.2 s to `boot_completed` (boot-4, boot-5) | works |
-| No text after the drive is found; text at shutdown | works / still some, being checked |
+| Firmware entry with `quiet`: kernel text gone (boot-8, boot-9) | works |
+| `console=ttynull` for stage0's own output | not checked yet |
 
 Logs: `gbos/logs/boot-N/` on the GBOSSYS partition.
