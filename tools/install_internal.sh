@@ -28,24 +28,36 @@ ROOT=$(findmnt -no SOURCE / | sed 's/\[.*//')
 [ "$(findmnt -no FSTYPE /)" = btrfs ] || die "/ is not btrfs"
 PN=$(basename "$ROOT"); DN=$(lsblk -no PKNAME "$ROOT"); DISK=/dev/$DN
 PNUM=$(cat /sys/class/block/$PN/partition)
-[ "$(lsblk -rno TYPE "$DISK" | grep -c part)" = "$PNUM" ] || die "$ROOT is not the last partition of $DISK"
-lsblk -rno LABEL "$DISK" | grep -q '^GBOS' && die "$DISK already has GBOS partitions"
+case $DN in nvme*|mmcblk*) PP=${DISK}p;; *) PP=$DISK;; esac
+N1=$((PNUM + 1)) N2=$((PNUM + 2)) N3=$((PNUM + 3))
+SYS_SECT=$((SYS_GIB * 2097152)) META_SECT=$((META_MIB * 2048))
+# Resume: steps 1-3 done (by an earlier --run) when the three partitions follow Fedora's, in this layout, still unformatted.
+RESUME=
+if [ "$(lsblk -no PARTLABEL ${PP}$N1 2>/dev/null)/$(lsblk -no PARTLABEL ${PP}$N2 2>/dev/null)/$(lsblk -no PARTLABEL ${PP}$N3 2>/dev/null)" = GBOSSYS/GBOS_META/GBOS_DATA ]; then
+  s() { cat /sys/class/block/$(basename $1)/$2; }
+  [ "$(s ${PP}$N1 start)" = $(( $(s $ROOT start) + $(s $ROOT size) )) ] && [ "$(s ${PP}$N1 size)" = $SYS_SECT ] \
+    && [ "$(s ${PP}$N2 start)" = $(( $(s ${PP}$N1 start) + SYS_SECT )) ] && [ "$(s ${PP}$N2 size)" = $META_SECT ] \
+    && [ "$(s ${PP}$N3 start)" = $(( $(s ${PP}$N2 start) + META_SECT )) ] || die "GBOS partitions exist but not in the expected layout"
+  [ -z "$(lsblk -no FSTYPE ${PP}$N1 ${PP}$N2 ${PP}$N3 | tr -d ' \n')" ] || die "the GBOS partitions already have filesystems: steps 1-4 are done"
+  RESUME=1
+else
+  [ "$(lsblk -rno TYPE "$DISK" | grep -c part)" = "$PNUM" ] || die "$ROOT is not the last partition of $DISK"
+  lsblk -rno PARTLABEL,LABEL "$DISK" | grep -q 'GBOS' && die "$DISK already has GBOS partitions"
+fi
 SS=$(cat /sys/block/$DN/queue/logical_block_size); [ "$SS" = 512 ] || die "sector size $SS, expected 512"
 TOTAL=$(cat /sys/block/$DN/size)
 P3START=$(cat /sys/class/block/$PN/start) P3SIZE=$(cat /sys/class/block/$PN/size)
-case $DN in nvme*|mmcblk*) PP=${DISK}p;; *) PP=$DISK;; esac
 
 # --- the layout (512-byte sectors), 1 MiB aligned. GPT keeps its backup copy in the last 33 sectors.
 LAST=$((TOTAL - 34))
 NEED=$((SIZE_GIB * 2097152))
 GSTART=$(( (LAST + 1 - NEED) / 2048 * 2048 ))
 NEWP3=$((GSTART - P3START))
-[ $NEWP3 -gt 0 ] && [ $NEWP3 -lt $P3SIZE ] || die "nothing to shrink"
+[ -n "$RESUME" ] && GSTART=$(cat /sys/class/block/$(basename ${PP}$N1)/start) NEWP3=$P3SIZE
+[ $NEWP3 -gt 0 ] && { [ $NEWP3 -lt $P3SIZE ] || [ -n "$RESUME" ]; } || die "nothing to shrink"
 FS_BYTES=$(( (NEWP3 - 2097152) * 512 ))   # btrfs 1 GiB smaller than its new partition: never past the end
 USED=$(df -B1 --output=used / | tail -1)
 [ $FS_BYTES -gt $((USED + 20 * 1073741824)) ] || die "Fedora would have under 20 GiB free after the shrink"
-SYS_SECT=$((SYS_GIB * 2097152)) META_SECT=$((META_MIB * 2048))
-N1=$((PNUM + 1)) N2=$((PNUM + 2)) N3=$((PNUM + 3))
 
 ESP=$(findmnt -no TARGET /boot/efi); [ -n "$ESP" ] || die "Fedora's EFI partition is not mounted at /boot/efi"
 ESPDEV=$(findmnt -no SOURCE /boot/efi); ESPNUM=$(cat /sys/class/block/$(basename $ESPDEV)/partition)
@@ -75,6 +87,7 @@ if [ -n "$RUN" ]; then
   printf 'Is your Fedora data backed up elsewhere? [yes/no] '; read a; [ "$a" = yes ] || die "back up first"
 fi
 
+if [ -n "$RESUME" ]; then echo; echo "== 1-3/7 already done (Fedora shrunk, partitions ${PP}$N1-$N3 in place): continuing at 4/7"; else
 step "1/7 shrink Fedora's btrfs (online, moves data off the end; may take minutes)" \
   sudo btrfs filesystem resize "1:$FS_BYTES" /
 step "2/7 shrink Fedora's partition to $(gib $NEWP3) (stays bigger than its filesystem)" \
@@ -82,7 +95,8 @@ step "2/7 shrink Fedora's partition to $(gib $NEWP3) (stays bigger than its file
     || { echo \"   btrfs is still \$S bytes, not <= $FS_BYTES: partition left as it is\"; exit 1; } \
     && echo '$P3START,$NEWP3' | sudo sfdisk -q --no-reread --no-tell-kernel -N $PNUM $DISK && sudo partx -u -n $PNUM $DISK"
 step "3/7 add the three gbOS86 partitions" \
-  sh -c "printf 'start=$GSTART, size=$SYS_SECT, type=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7, name=GBOSSYS\nsize=$META_SECT, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name=GBOS_META\ntype=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name=GBOS_DATA\n' | sudo sfdisk -q --append --no-reread --no-tell-kernel $DISK && sudo partx -a -n $N1:$N3 $DISK"
+  sh -c "printf 'start=$GSTART, size=$SYS_SECT, type=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7, name=GBOSSYS\nsize=$META_SECT, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name=GBOS_META\ntype=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name=GBOS_DATA\n' | sudo sfdisk -q --append --no-reread --no-tell-kernel $DISK && { sudo partx -a -n $N1:$N3 $DISK 2>/dev/null || true; } && [ -b ${PP}$N1 ] && [ -b ${PP}$N3 ]"
+fi
 step "4/7 make the filesystems (as gbOS86's installer does)" \
   sh -c "sudo mkfs.fat -F 32 -n GBOSSYS ${PP}$N1 >/dev/null && sudo mke2fs -F -q -t ext4 -L GBOS_META ${PP}$N2 && sudo mke2fs -F -q -t ext4 -m 0 -O verity -L GBOS_DATA ${PP}$N3"
 step "5/7 copy gbos/ from $SRC to the new GBOSSYS, then compare every file" \
