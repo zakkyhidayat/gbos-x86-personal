@@ -105,7 +105,7 @@ step "5/7 copy gbos/ from $SRC to the new GBOSSYS, then compare every file" \
     && (cd '$SRCMNT' && find busybox gbos -path gbos/logs -prune -o -path 'gbos/backup-*' -prune -o -type f -print) | while read f; do cmp -s '$SRCMNT'/\"\$f\" \"\$D/\$f\" || { echo \"DIFFERS: \$f\"; exit 1; }; done \
     && echo \"   copied and verified: \$(du -sh \"\$D\" | cut -f1)\" && sudo umount \"\$D\" && rmdir \"\$D\""
 step "6/7 put the kernel on Fedora's EFI partition" \
-  sh -c "sudo mkdir -p '$ESP/EFI/gbos' && sudo cp '$KERNEL' '$ESP/EFI/gbos/BOOTX64.EFI' && cmp '$KERNEL' '$ESP/EFI/gbos/BOOTX64.EFI' && echo '   verified'"
+  sh -c "sudo mkdir -p '$ESP/EFI/gbos' && sudo cp '$KERNEL' '$ESP/EFI/gbos/BOOTX64.EFI' && sudo cmp '$KERNEL' '$ESP/EFI/gbos/BOOTX64.EFI' && echo '   verified'"
 step "7/7 boot entry \"Googlebook (internal)\", after Fedora in the boot order" \
   sh -c "N=\$(sudo efibootmgr -C -d $DISK -p $ESPNUM -L 'Googlebook (internal)' -l '\\EFI\\gbos\\BOOTX64.EFI' -u '$OPTS' | sed -n 's/^Boot\\([0-9A-F]\\{4\\}\\)\\* Googlebook (internal).*/\\1/p') \
     && O=\$(efibootmgr | sed -n 's/^BootOrder: //p') && F=\${O%%,*} && sudo efibootmgr -q -o \"\$F,\$N,\${O#*,}\" && efibootmgr | grep -E '^BootOrder|Googlebook'"
