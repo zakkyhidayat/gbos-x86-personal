@@ -19,7 +19,7 @@
  * flag, which the I/O thread turns into BMKT_CMD_CANCEL_OP the next time it waits on the interrupt EP
  * (it wakes every 250 ms), exactly where libfprint cancels.
  *
- * The includer provides: memcpy, memset, strlen, snprintf, open, close, read, ioctl, poll, struct pollfd,
+ * The includer provides: memcpy, memset, strlen, snprintf, open, close, read, ioctl, poll, usleep, struct pollfd,
  * POLLOUT, SYN_ERRNO (the current errno value), SYN_LOGI/SYN_LOGW/SYN_LOGE (printf-style) and the O_ and
  * E constants used below.
  */
@@ -114,6 +114,8 @@ struct syn {
 	bool waiting;		/* next step is the interrupt EP (else a reply is due on EP 0x81) */
 	bool finger_on;
 	bool cancel_sent;
+	bool cancel_blocked;	/* the sensor refused the cancel: read its pending message before trying again */
+	bool need_reset;	/* a transfer failed: reset the device on the next syn_open */
 	int cancel;		/* __atomic, set by syn_request_cancel */
 	struct syn_usb_urb irq_urb;	/* the interrupt transfer, while irq_busy */
 	uint8_t irq_buf[8];
@@ -144,13 +146,18 @@ static void syn_init(struct syn *s)
 
 static inline void syn_request_cancel(struct syn *s) { __atomic_store_n(&s->cancel, 1, __ATOMIC_RELEASE); }
 static inline void syn_clear_cancel(struct syn *s) { __atomic_store_n(&s->cancel, 0, __ATOMIC_RELEASE); }
+static inline bool syn_cancel_requested(struct syn *s) { return __atomic_load_n(&s->cancel, __ATOMIC_ACQUIRE); }
 
 static int syn_bulk(struct syn *s, unsigned int ep, void *buf, unsigned int len, unsigned int timeout_ms)
 {
 	struct syn_usb_bulk b = { ep, len, timeout_ms, buf };
 	int n = ioctl(s->fd, (int)SYN_USBDEVFS_BULK, &b);
 
-	return n < 0 ? -SYN_ERRNO : n;
+	if (n >= 0)
+		return n;
+	n = -SYN_ERRNO;
+	s->need_reset = true;
+	return n;
 }
 
 /* Wait up to 250 ms on the interrupt EP (cmd_interrupt_cb): 1 when the sensor has a message pending, 0 when
@@ -166,8 +173,10 @@ static int syn_irq_wait(struct syn *s)
 		s->irq_urb.endpoint = SYN_EP_INTERRUPT;
 		s->irq_urb.buffer = s->irq_buf;
 		s->irq_urb.buffer_length = 7;	/* USB_INTERRUPT_DATA_SIZE */
-		if (ioctl(s->fd, (int)SYN_USBDEVFS_SUBMITURB, &s->irq_urb) < 0)
+		if (ioctl(s->fd, (int)SYN_USBDEVFS_SUBMITURB, &s->irq_urb) < 0) {
+			s->need_reset = true;
 			return -SYN_ERRNO;
+		}
 		s->irq_busy = true;
 	}
 	if (poll(&p, 1, 250) < 0 && SYN_ERRNO != EINTR)
@@ -177,8 +186,10 @@ static int syn_irq_wait(struct syn *s)
 	s->irq_busy = false;
 	if (done != &s->irq_urb)
 		return -EPROTO;
-	if (done->status < 0)
+	if (done->status < 0) {
+		s->need_reset = true;
 		return done->status;
+	}
 	return done->actual_length >= 1 && (s->irq_buf[0] & SYN_ASYNC_PENDING) ? 1 : 0;
 }
 
@@ -268,6 +279,7 @@ static int syn_begin(struct syn *s, uint8_t msg_id, const uint8_t *payload, uint
 	syn_irq_discard(s);	/* a report left over from the previous command is stale */
 	s->waiting = false;
 	s->cancel_sent = false;
+	s->cancel_blocked = false;
 	return syn_send(s, 0, msg_id, payload, len);
 }
 
@@ -341,10 +353,23 @@ static int syn_next(struct syn *s, struct syn_msg *m)
 		if (s->waiting) {
 			uint8_t c = SYN_CMD_ASYNCMSG_READ;
 
-			if (!s->cancel_sent && __atomic_load_n(&s->cancel, __ATOMIC_ACQUIRE)) {
-				s->cancel_sent = true;
-				if ((n = syn_send(s, -1, BMKT_CMD_CANCEL_OP, NULL, 0)) < 0)
+			/* cancel(): send CANCEL_OP out of band, then read its reply straight from EP 0x81 (the interrupt
+			 * transfer is dropped). A sensor holding a message for us can refuse the OUT transfer (seen as a
+			 * 1 s timeout right after a capture): libfprint only warns there; here the message is read first
+			 * and the cancel sent again, so the operation still ends with the cancel. */
+			if (!s->cancel_sent && !s->cancel_blocked && __atomic_load_n(&s->cancel, __ATOMIC_ACQUIRE)) {
+				n = syn_send(s, -1, BMKT_CMD_CANCEL_OP, NULL, 0);
+				if (n == 0) {
+					s->cancel_sent = true;
+					syn_irq_discard(s);
+					s->waiting = false;
+					continue;
+				}
+				if (n != -ETIMEDOUT)
 					return n;
+				s->need_reset = false;	/* a refused OUT is not a broken device */
+				s->cancel_blocked = true;
+				SYN_LOGW("cancel refused by the sensor (busy): retrying after its pending message");
 			}
 			if ((n = syn_irq_wait(s)) < 0)
 				return n;
@@ -356,6 +381,7 @@ static int syn_next(struct syn *s, struct syn_msg *m)
 		}
 		if ((n = syn_recv(s, m)) < 0)
 			return n;
+		s->cancel_blocked = false;
 		s->waiting = true;	/* unless the caller sends a follow-up (syn_continue) */
 		if (m->id == BMKT_EVT_FINGER_REPORT) {
 			if (m->len != 1)
@@ -393,6 +419,21 @@ static int syn_simple(struct syn *s, uint8_t msg_id, const uint8_t *payload, uin
 			return 0;
 	}
 	return r;
+}
+
+/* fps_init_msg_cb's answer to BMKT_FP_SYSTEM_BUSY: cancel whatever the sensor is still doing (an operation an
+ * interrupted program left running); the cancel reply, OK or "nothing to cancel", ends it. */
+static int syn_cancel_busy(struct syn *s)
+{
+	struct syn_msg m;
+	int r;
+
+	SYN_LOGW("sensor busy with an old operation: cancelling it");
+	s->cancel_sent = true;
+	if ((r = syn_continue(s, BMKT_CMD_CANCEL_OP, NULL, 0)) == 0)
+		while ((r = syn_next(s, &m)) == 0 && !m.complete)
+			;
+	return r == -ECANCELED ? 0 : r;
 }
 
 static int syn_get_version(struct syn *s)
@@ -446,10 +487,15 @@ static int syn_open(struct syn *s)
 		SYN_LOGE("open %s: %d", s->path, r);
 		return r;
 	}
-	if (!s->was_reset) {
+	/* reset once per process (libfprint's probe), and again after a failed transfer so a sensor left halfway
+	 * through a command starts clean */
+	if (!s->was_reset || s->need_reset) {
 		if (ioctl(s->fd, (int)SYN_USBDEVFS_RESET, 0) < 0)
 			SYN_LOGW("reset %s: %d", s->path, -SYN_ERRNO);
+		else if (s->was_reset)
+			SYN_LOGI("sensor reset after a failed transfer");
 		s->was_reset = true;
+		s->need_reset = false;
 	}
 	if (ioctl(s->fd, (int)SYN_USBDEVFS_CLAIMINTERFACE, &iface) < 0) {
 		r = -SYN_ERRNO;
@@ -467,12 +513,7 @@ static int syn_open(struct syn *s)
 			r = -EIO;
 			goto fail;
 		}
-		/* fps_init_msg_cb: cancel whatever the sensor is busy with; the cancel reply ends the init. */
-		if ((r = syn_continue(s, BMKT_CMD_CANCEL_OP, NULL, 0)) == 0)
-			while ((r = syn_next(s, &m)) == 0 && !m.complete)
-				;
-		if (r == -ECANCELED)
-			r = 0;
+		r = syn_cancel_busy(s);
 	}
 	if (r < 0)
 		goto fail;
@@ -493,7 +534,8 @@ static void syn_close(struct syn *s)
 		return;
 	syn_irq_discard(s);
 	syn_clear_cancel(s);
-	if (syn_simple(s, BMKT_CMD_POWER_DOWN_NOTIFY, NULL, 0, &m) == 0 && m.id == BMKT_RSP_POWER_DOWN_FAIL)
+	/* after a failed transfer the next syn_open resets the sensor anyway: don't wait on a command it won't answer */
+	if (!s->need_reset && syn_simple(s, BMKT_CMD_POWER_DOWN_NOTIFY, NULL, 0, &m) == 0 && m.id == BMKT_RSP_POWER_DOWN_FAIL)
 		SYN_LOGW("power down failed: %d", m.result);
 	ioctl(s->fd, (int)SYN_USBDEVFS_RELEASEINTERFACE, &iface);
 	close(s->fd);
@@ -524,13 +566,14 @@ static int syn_enroll(struct syn *s, const char *uid, const struct syn_ev *ev, i
 	uint8_t p[2 + SYN_MAX_UID];
 	size_t n = strlen(uid);
 	struct syn_msg m;
-	int stage = 0, r;
+	int stage = 0, r, busy = 1, settle = 20;
 
 	if (n == 0 || n > SYN_MAX_UID || uid[0] == ' ')
 		return -EINVAL;
 	p[0] = 0;
 	p[1] = 1;
 	memcpy(p + 2, uid, n);
+restart:
 	if ((r = syn_begin(s, BMKT_CMD_ENROLL_USER, p, (uint8_t)(n + 2))) < 0)
 		return r;
 	for (;;) {
@@ -555,6 +598,22 @@ static int syn_enroll(struct syn *s, const char *uid, const struct syn_ev *ev, i
 			break;
 		}
 		case BMKT_RSP_ENROLL_FAIL:
+			if (m.result == BMKT_FP_SYSTEM_BUSY && busy-- > 0) {
+				if ((r = syn_cancel_busy(s)) < 0)
+					return r;
+				goto restart;
+			}
+			/* A finger still on the sensor when the enroll starts (Android's Settings starts it right after the
+			 * "find the sensor" touch) is refused with a stimulus error before any capture: ask for a lift and
+			 * start again, for up to ~6 s. */
+			if (m.result == BMKT_SENSOR_STIMULUS_ERROR && stage == 0 && settle-- > 0) {
+				if (settle == 19)
+					syn_emit(ev, SYN_EV_RETRY, 0);
+				usleep(300000);
+				if (syn_cancel_requested(s))
+					return -ECANCELED;
+				goto restart;
+			}
 			*fail = m.result;
 			return SYN_FAILED;
 		case BMKT_RSP_ENROLL_OK:
@@ -570,7 +629,7 @@ static int syn_identify(struct syn *s, const char *const *uids, int count, const
 {
 	uint8_t p[3 + SYN_MAX_UID];
 	struct syn_msg m;
-	int idx = 0, r, w;
+	int idx = 0, r, w, busy = 1;
 	size_t n;
 
 	if (count <= 0 || count > 255)
@@ -618,13 +677,26 @@ static int syn_identify(struct syn *s, const char *const *uids, int count, const
 				case BMKT_FP_DATABASE_NO_RECORD_EXISTS: case BMKT_FP_DATABASE_EMPTY:
 					r = SYN_NORECORD;
 					break;
+				case BMKT_FP_SYSTEM_BUSY:
+					if (busy-- > 0) {
+						if ((r = syn_cancel_busy(s)) < 0)
+							return r;
+						idx = 0;	/* start over with the first name */
+						r = -EAGAIN;
+						break;
+					}
+					/* fall through */
 				default:
 					*fail = m.result;
 					return SYN_FAILED;
 				}
+				if (r == -EAGAIN)
+					break;
 				if (r == SYN_RETRY)
 					syn_emit(ev, SYN_EV_RETRY, 0);
 				w = syn_wait_removal(s);
+				if (w == 0 && r == SYN_RETRY && !s->finger_on)
+					usleep(300000);	/* no finger report came: don't spin on a resting finger */
 				return w < 0 ? w : r;
 			}
 		}

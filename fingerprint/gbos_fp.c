@@ -792,6 +792,10 @@ static void op_authenticate(struct session *ss)
 	}
 	for (;;) {
 		r = syn_identify(&dev, list, st->n, &ev, matched, &fail);
+		if (r < 0 && r != -ECANCELED && syn_cancel_requested(&dev)) {
+			LOGW("identify ended with %d while being cancelled: reported as cancelled", r);
+			r = -ECANCELED;
+		}
 		if (r == SYN_OK) {
 			for (i = 0; i < st->n && strcmp(matched, names[i]); i++)
 				;
@@ -881,6 +885,12 @@ static void op_enroll(struct session *ss, const struct hat *hat)
 		return;
 	}
 	r = syn_enroll(&dev, name, &ev, &fail);
+	/* Settings cancels its "find the sensor" enroll at the first touch: an I/O error on the way out is still a
+	 * cancel to the framework (and syn_open resets the sensor next time) */
+	if (r < 0 && r != -ECANCELED && syn_cancel_requested(&dev)) {
+		LOGW("user %d: enroll ended with %d while being cancelled: reported as cancelled", ss->user, r);
+		r = -ECANCELED;
+	}
 	if (r == SYN_OK) {
 		st->ids[st->n++] = id;
 		if (st_save(st)) {
