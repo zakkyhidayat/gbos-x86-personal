@@ -1,0 +1,274 @@
+diff --git a/.gitignore b/.gitignore
+index 6ba0d9c..6267106 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -24,6 +24,7 @@
+ #   usb/patched/*.so      patched Google libraries (libz, libcrypto)
+ #   usb/libkm_compat.so   patched Google library
+ #   usb/soft_gk           software Gatekeeper
++#   usb/gbos_fp           fingerprint HAL (fingerprint/build.sh)
+ #   usb/firmware/         Intel Wi-Fi/Bluetooth firmware (linux-firmware) + regulatory.db
+ /usb/out/*
+ !/usb/out/BOOTX64.EFI
+@@ -35,6 +36,9 @@
+ /usb/stage0.cpio
+ /gatekeeper/libs/
+ /gatekeeper/soft_gk
++/fingerprint/libs/
++/fingerprint/gbos_fp
++/fingerprint/syn_test
+ *.o
+ __pycache__/
+ 
+diff --git a/README.md b/README.md
+index 56b5acc..db39f95 100644
+--- a/README.md
++++ b/README.md
+@@ -69,6 +69,8 @@ Fedora/RHEL with SELinux enforcing: the scripts add `:z` to the docker bind moun
+ | Night Light | Gamma tables from userspace are ignored (that's the colour fix), so it has no effect |
+ | Linux Terminal (AVF) | Secretkeeper hang fixed; VM boot not yet confirmed |
+ | Auth-bound keystore keys | `soft_gk`'s auth tokens aren't trusted by the software KeyMint |
++| adb over a Thunderbolt cable | `usb/kmod/thunderbolt_net.ko` (CONFIG_USB4_NET, built for the shipped kernel by `kernel/isa_emu_patch/build_extra_module.sh`) + `usb/tbnet.sh`: this side 10.42.0.2/24. No USB device-mode controller on these laptops, so adb over a USB cable is impossible. Not yet booted in Android |
++| Fingerprint (Synaptics match-on-chip USB, e.g. ThinkPad X13 Gen 2i) | `fingerprint/gbos_fp.c`, started only when such a sensor is found: a WEAK (Class 2) sensor that unlocks the lock screen and weak-biometric app prompts, never Keystore keys. Sensor protocol tested on the real sensor from Linux; not yet booted in Android |
+ | Google's on-device AI (Magic Pointer, AICore) | Google's servers refuse it without hardware key attestation, which no non-Google laptop can provide |
+ | OS updates | Built-in OTA can't work; moving to a new Google build is semi-automated: `tools/port_build.sh`, see [`porting.md`](porting.md) |
+ | Other laptops | Seven of nineteen tried machines work fully, nine partly, one pending, two not; see [Tested laptops](#tested-laptops). The CPU-emulation kernel should help any pre-2021 Intel CPU |
+@@ -204,7 +206,7 @@ The kernel (#31) builds drivers for most Intel-era laptops as **modules**, and b
+ 
+ **Honest limits.** Nineteen machines have been booted (below); anything not on that list is built and wired but untested on
+ hardware. Sound on SOF machines needs the codec's mixer controls to match the generated config (best effort);
+-suspend/resume, fingerprint readers, IPU6 cameras and NVIDIA/AMD discrete GPUs are not covered. Build the payload with
++suspend/resume, fingerprint readers other than Synaptics match-on-chip USB ones, IPU6 cameras and NVIDIA/AMD discrete GPUs are not covered. Build the payload with
+ `tools/fetch_firmware.sh` (firmware, not committed) and `kernel/isa_emu_patch/build_generic*.sh` (modules, not committed).
+ 
+ ## Microsoft Surface Laptop 7 (Intel, Core Ultra 7 266V / Lunar Lake)
+@@ -276,6 +278,7 @@ driver inside Google's userspace under QEMU.
+ | `usb/installer/` | Alpine `sfdisk`/`mke2fs`/`e2fsck`/`mkfs.fat`/`blkid` + musl (`tools/fetch_installer_tools.sh`) |
+ | `usb/firmware/` | Intel Wi-Fi + Bluetooth firmware, `regulatory.db` |
+ | `usb/soft_gk`, `gatekeeper/` | software Gatekeeper binary and source |
++| `usb/gbos_fp`, `fingerprint/` | fingerprint HAL for Synaptics USB sensors: binary, source (`syn.h` is a port of libfprint's driver, LGPL-2.1), host test `syn_test` |
+ | `usb/make_super.py`, `make_bootdisk.py`, `make_initramfs.py` | build `super.img`, the fake ChromeOS boot disk, the stage0 initramfs |
+ | `kernel/configure_whl.py` | kernel config for this laptop (from Google's recovery kernel config) |
+ | `kernel/fetch_kernel_sources.sh` | fetches the kernel tree, the AOSP clang and KernelSU into the `gbos-ksrc` volume |
+@@ -383,7 +386,11 @@ Needs macOS or Linux with docker, python3, qemu (for tests) and ~30 GB free. The
+    and `kernel/isa_emu_test/run_ksu_qemu.py usb/out/BOOTX64.EFI` (expects KSU_QEMU_TEST_PASS: KernelSU
+    came up, its version is one the manager app accepts, and the x86_64 syscall dispatcher was patched).
+ 8. **Userspace pieces:** `tools/fetch_installer_tools.sh`; `gatekeeper/build.sh` (needs `gatekeeper/libs/`
+-   from the image: `libc`, `libdl` from the runtime APEX, `libbinder_ndk`, `libcrypto`, `liblog`);
++   from the image: `libc`, `libdl` from the runtime APEX, `libbinder_ndk`, `libcrypto`, `liblog`); `fingerprint/build.sh`
++   (same `libs/` set in `fingerprint/libs/`; any clang works: `CC=clang LD=ld.lld READELF=llvm-readelf`), checked by
++   `tools/test_gbos_fp.sh` (`SENSOR=1` also probes a real sensor through docker); one more module for the shipped
++   kernel without rebuilding it: `kernel/isa_emu_patch/build_extra_module.sh` (config from the EFI's IKCONFIG, CRCs from
++   `usb/modules` via `kernel/symvers_from_modules.py`, checked by `tools/test_tbnet.sh`);
+    patched libraries with `tools/patch_libz_adler.py` and `tools/sha_redirect.py`. The hashes in
+    `hook.sh`/`apex_patch.sh` pin the exact originals they apply to. KernelSU's manager app and daemon
+    come from the KernelSU release (`build.sh` puts them in `usb/ksu/`).
+diff --git a/tools/deploy_stick.sh b/tools/deploy_stick.sh
+index 2fac3a6..c707ddc 100755
+--- a/tools/deploy_stick.sh
++++ b/tools/deploy_stick.sh
+@@ -23,7 +23,7 @@ put() {  # put SRC DST(relative to gbos/): copy when different
+ }
+ 
+ echo "deploying to $VOL"
+-for f in hook.sh install.sh aidiag.sh early_patch.sh hwdetect.sh apex_patch.sh crossystem libkm_compat.so system_ext_manifest.xml soft_gk; do put "$U/$f" "$f"; done
++for f in hook.sh install.sh aidiag.sh early_patch.sh hwdetect.sh apex_patch.sh crossystem libkm_compat.so system_ext_manifest.xml soft_gk gbos_fp tbnet.sh; do put "$U/$f" "$f"; done
+ for d in patched audio installer kmod ksu; do
+   [ -d "$U/$d" ] || continue
+   (cd "$U" && find "$d" -type f ! -name '.DS_Store') | while read -r f; do put "$U/$f" "$f"; done
+diff --git a/tools/make_gbos86_image.sh b/tools/make_gbos86_image.sh
+index 7cd63ff..ec14255 100755
+--- a/tools/make_gbos86_image.sh
++++ b/tools/make_gbos86_image.sh
+@@ -65,7 +65,7 @@ python3 "$U/make_super.py" "$STAGE/gbos/gbos/super.img" "$STAGE/gbos/gbos/super.
+ echo "== assembling files ($BUILD_TYPE mode)"
+ cp "$U/out/BOOTX64.EFI" "$STAGE/efi/EFI/BOOT/BOOTX64.EFI"
+ G="$STAGE/gbos/gbos"
+-for f in hook.sh aidiag.sh early_patch.sh hwdetect.sh install.sh apex_patch.sh gbos.cfg crossystem bootdisk.img libkm_compat.so system_ext_manifest.xml soft_gk; do
++for f in hook.sh aidiag.sh early_patch.sh hwdetect.sh install.sh apex_patch.sh gbos.cfg crossystem bootdisk.img libkm_compat.so system_ext_manifest.xml soft_gk gbos_fp tbnet.sh; do
+   cp "$U/$f" "$G/$f"
+ done
+ for d in firmware patched audio installer kmod modules surface ksu; do cp -R "$U/$d" "$G/$d"; done
+diff --git a/tools/test_device_model.sh b/tools/test_device_model.sh
+index 860faec..3d75d85 100755
+--- a/tools/test_device_model.sh
++++ b/tools/test_device_model.sh
+@@ -39,6 +39,31 @@ grep -q '^ro.product.vendor.model=Lapis$' "$W/out.prop" && grep -q '^ro.product.
+ grep -q '^ro.product.model=' "$W/out.prop" && bad "ro.product.model added although DEVICE_MODEL unset" || ok "DEVICE_MODEL unset: no ro.product.model added"
+ grep -q '^ro.sf.lcd_density=180$' "$W/out.prop" && ok "DENSITY still applied" || bad "DENSITY not applied"
+ 
++# the identity rewrite over all partitions' build.prop files (DEVICE_BRAND / DEVICE_MODEL), whatever value Google used
++awk '/^case "\$DEVICE_BRAND\$DEVICE_MODEL" in/{p=1} p{print} p&&/^fi$/{exit}' "$ROOT/usb/hook.sh" \
++  | sed -e "s#/new/#$W/new/#g" -e "s#/tmp/ident#$W/ident#g" -e 's#mount --bind \$N \$P#cp $N $P#' > "$W/ident.sh"
++[ -s "$W/ident.sh" ] && ok "identity block extracted from hook.sh" || bad "identity block not found in hook.sh"
++mkprops() {	# a build.prop per partition, with a name that is not lapis's ASUS one
++  for d in vendor product/etc vendor/odm/etc vendor/odm_dlkm/etc system_ext/etc system_dlkm/etc vendor_dlkm/etc; do
++    mkdir -p "$W/new/$d"; p=$(echo "$d" | sed 's#/etc##; s#.*/##')
++    printf 'ro.product.%s.brand=Acme\nro.product.%s.manufacturer=Acme\nro.product.%s.model=Acme Book 15\nro.product.%s.device=lapis\nro.%s.build.fingerprint=Acme/lapis/lapis:17/X/1:user/release-keys\n' \
++      "$p" "$p" "$p" "$p" "$p" > "$W/new/$d/build.prop"
++  done
++}
++allprops() { cat "$W/new/vendor/build.prop" "$W"/new/*/etc/build.prop "$W"/new/vendor/*/etc/build.prop; }
++mkprops
++( log() { :; }; DEVICE_BRAND=LENOVO; DEVICE_MODEL="ThinkPad X13 Gen 2i"; . "$W/ident.sh" )
++[ "$(allprops | grep -c '\.brand=LENOVO$')" = 7 ] && [ "$(allprops | grep -c '\.manufacturer=LENOVO$')" = 7 ] && ok "identity: brand/manufacturer replaced in all 7 partitions, whatever the old value" || bad "identity: brand not replaced everywhere"
++[ "$(allprops | grep -c '\.model=ThinkPad X13 Gen 2i$')" = 7 ] && ok "identity: model replaced in all 7 partitions" || bad "identity: model not replaced everywhere"
++allprops | grep 'Acme' | grep -qv 'fingerprint=' && bad "identity: an old name survived outside the fingerprints" || ok "identity: no old name left except in fingerprints"
++[ "$(allprops | grep -c 'fingerprint=Acme/lapis')" = 7 ] && [ "$(allprops | grep -c '\.device=lapis$')" = 7 ] && ok "identity: fingerprints and device=lapis untouched" || bad "identity: fingerprint or device changed"
++mkprops
++( log() { :; }; DEVICE_BRAND=; DEVICE_MODEL="Only Model"; . "$W/ident.sh" )
++grep -q '^ro.product.product.brand=Acme$' "$W/new/product/etc/build.prop" && grep -q '^ro.product.product.model=Only Model$' "$W/new/product/etc/build.prop" && ok "identity: DEVICE_BRAND unset keeps the brand, model still replaced" || bad "identity: partial settings wrong"
++mkprops
++( log() { :; }; DEVICE_BRAND="A/B"; DEVICE_MODEL="X"; . "$W/ident.sh" )
++grep -q '^ro.product.product.model=Acme Book 15$' "$W/new/product/etc/build.prop" && ok "identity: values with / refused, files untouched" || bad "identity: unsafe value applied"
++
+ # the service that sets the Settings "Device name"
+ H=$ROOT/usb/hook.sh
+ grep -qF "settings put global device_name '\$DEVICE_MODEL'" "$H" && ok "hook: gbos_devname sets Settings.Global.device_name" || bad "hook: no device_name service"
+diff --git a/usb/gbos.cfg b/usb/gbos.cfg
+index e0cdb85..18def91 100644
+--- a/usb/gbos.cfg
++++ b/usb/gbos.cfg
+@@ -68,6 +68,17 @@ MODOPTS="mt7921_common.disable_clc=1"
+ # so quick flicks do nothing. By default each internal touchpad gets an IDC file with Change_Timeout=0.02. Takes effect after a boot.
+ #TOUCHPAD_FLICK=0
+ 
++# FINGERPRINT=0 turns off gbos_fp, the fingerprint HAL for Synaptics match-on-chip USB sensors (ThinkPad X13 Gen 2i: 06cb:00f9).
++# By default it runs only when such a sensor is found at boot. It is a WEAK (Class 2) sensor: it unlocks the lock screen and
++# signs in to apps that accept weak biometrics, but cannot unlock Keystore keys. Takes effect after a boot.
++#FINGERPRINT=0
++
++# TB_NET=0 turns off Thunderbolt networking (thunderbolt_net + usb/tbnet.sh): a Thunderbolt/USB4 cable to another computer
++# becomes a network link, this side TB_NET_IP/24, so adb can run over the cable (give the other side 10.42.0.1/24, then
++# adb connect 10.42.0.2:<port>). On by default on machines whose Thunderbolt driver loads. Takes effect after a boot.
++#TB_NET=0
++#TB_NET_IP=10.42.0.2
++
+ # Bind the SHA-NI/VNNI-free libz + libcrypto before stage0's dmctl runs (saves ~2 s of trapped SHA at boot).
+ # Harmless if the file is missing; hook.sh patches later anyway.
+ [ -f /gbos/gbos/early_patch.sh ] && . /gbos/gbos/early_patch.sh
+@@ -79,4 +90,7 @@ MODOPTS="mt7921_common.disable_clc=1"
+ 
+ # DEVICE_MODEL: name shown as "Model" and "Device name" in Settings > About (ro.product.model / ro.product.marketname, and
+ # Settings.Global.device_name set after boot). Unset = Google's own. Only the model strings change, not the build fingerprint.
+-#DEVICE_MODEL="Surface Laptop 7"
++# DEVICE_BRAND: ro.product.<partition>.brand and .manufacturer (Google: ASUS). Unset = Google's. DEVICE_BRAND and DEVICE_MODEL replace
++# whatever value Google's build carries, in every partition; the build fingerprint stays Google's.
++DEVICE_BRAND="LENOVO"
++DEVICE_MODEL="ThinkPad X13 Gen 2i"
+diff --git a/usb/hook.sh b/usb/hook.sh
+index 49cf0a2..3112f4d 100644
+--- a/usb/hook.sh
++++ b/usb/hook.sh
+@@ -89,6 +89,28 @@ else
+   fi
+ fi
+ 
++# Thunderbolt networking: thunderbolt_net (CONFIG_USB4_NET, left out of the shipped kernel; built for it by
++# kernel/isa_emu_patch/build_extra_module.sh into gbos/kmod/) turns a Thunderbolt/USB4 cable to another computer into a
++# network link (thunderbolt0), which gbos_tbnet (usb/tbnet.sh) addresses for adb over the cable. The peer can appear any
++# time after boot, so the driver is loaded now on every machine whose Thunderbolt driver came up. TB_NET=0 turns it off.
++TBRC=
++if [ "${TB_NET:-1}" != 0 ] && [ -f $G/kmod/thunderbolt_net.ko ] && grep -q '^thunderbolt ' /proc/modules; then
++  if insmod $G/kmod/thunderbolt_net.ko; then
++    log "hook: thunderbolt_net loaded, link address ${TB_NET_IP:-10.42.0.2}"
++    TBRC="# Thunderbolt network link for adb over the cable (usb/tbnet.sh).
++service gbos_tbnet /system/bin/sh /postinstall/gbos/tbnet.sh ${TB_NET_IP:-10.42.0.2}
++    user root
++    group root inet
++    seclabel u:r:shell:s0
++    oneshot
++    disabled
++on property:sys.boot_completed=1
++    start gbos_tbnet"
++  else
++    log "hook: thunderbolt_net load FAILED: $(dmesg | grep -iE 'thunderbolt_net|disagrees|Unknown symbol' | tail -2 | tr '\n' ' ')"
++  fi
++fi
++
+ # --- software rendering for GPUs Google's image has no driver for (AMD) -- gbos_gpu_* functions ---
+ # Google's image renders through ANGLE -> Vulkan, and its only Vulkan driver is Intel's ANV (/vendor/lib64/hw/vulkan.intel.so);
+ # buffers come from minigbm (gralloc, /vendor/lib64/libminigbm_gralloc.so), which has no amdgpu backend. On a laptop whose GPU
+@@ -213,6 +235,16 @@ gbos_touchpads() {
+     if (name ~ /touchpad|trackpad/ && bus != "0003" && v != "" && p != "") print tolower(v) ":" tolower(p)
+   }' ${INPUTS:-/proc/bus/input/devices} 2>/dev/null | sort -u
+ }
++# "06cb:pppp" of the first Synaptics match-on-chip fingerprint sensor on USB, else nothing. The product ids are fingerprint/syn.h's
++# (libfprint's synaptics table); tools/test_gbos_fp.sh checks the two lists match. USBDEVS= is only for tests.
++GBOS_FP_PIDS="00bd 00c2 00c4 00c6 00df 00e9 00f0 00f9 00fc 0100 0103 0104 0106 0107 0108 0109 010a 010b 010d 010e 0123 0124 0126 0129 015f 0168 0169 016c 0173 0174 019d 019f 01a0 01a4"
++gbos_synaptics_fp() {
++  for d in ${USBDEVS:-/sys/bus/usb/devices}/*; do
++    [ "$(cat $d/idVendor 2>/dev/null)" = 06cb ] || continue
++    p=$(cat $d/idProduct 2>/dev/null)
++    case " $GBOS_FP_PIDS " in *" $p "*) echo "06cb:$p"; return;; esac
++  done
++}
+ if mount --bind /gbos /new/postinstall; then
+   mkdir -p /tmp/sysinit && cp -a /new/system/etc/init/. /tmp/sysinit/
+   rm -f /tmp/sysinit/gscd.rc   # gscd needs Google's security chip (/dev/tpm0); it only crash-loops here
+@@ -240,6 +272,28 @@ if mount --bind /gbos /new/postinstall; then
+     mkdir /data/system/devices 0775 system system
+     mkdir /data/system/devices/idc 0775 system system$IDCRC"
+   fi
++  # Fingerprint: Google's crosfp HAL only drives Google's own fingerprint MCU. gbos_fp (fingerprint/gbos_fp.c) drives Synaptics
++  # match-on-chip USB sensors (ThinkPad X13 Gen 2i: 06cb:00f9) and is only added when one is on the bus now, so every other laptop
++  # keeps Google's setup. Its service declares IFingerprint/default too: init then rejects crosfp's definition, which it parses
++  # later from the APEX ("Interface ... redefined"), so only one HAL can own the interface. FINGERPRINT=0 in gbos.cfg turns it off.
++  FPRC=
++  if [ "${FINGERPRINT:-1}" != 0 ] && [ -x $G/gbos_fp ]; then
++    FPDEV=$(gbos_synaptics_fp)
++    if [ -n "$FPDEV" ]; then
++      FPRC="# Fingerprint HAL for the Synaptics sensor $FPDEV found at boot (fingerprint/gbos_fp.c).
++service gbos_fp /postinstall/gbos/gbos_fp
++    class hal
++    user system
++    group system usb
++    seclabel u:r:hal_fingerprint_default:s0
++    interface aidl android.hardware.biometrics.fingerprint.IFingerprint/default
++on post-fs-data
++    mkdir /data/vendor/crosfp 0770 system system"
++      log "hook: fingerprint: Synaptics $FPDEV, gbos_fp replaces crosfp"
++    else
++      log "hook: fingerprint: no Synaptics sensor on USB, Google's crosfp left as is"
++    fi
++  fi
+   cat > /tmp/sysinit/gbos.rc <<RC
+ # Rotate at 1 MB: on this stick, data written past ~4 MB of a file that stays open never reaches
+ # the FAT cluster chain before power-off (fsck: "size ... should at most be 4046848"). Rotating
+@@ -387,6 +441,10 @@ service gbos_soft_gk /postinstall/gbos/soft_gk
+     seclabel u:r:hal_gatekeeper_default:s0
+     interface aidl android.hardware.gatekeeper.IGatekeeper/default
+ 
++$FPRC
++
++$TBRC
++
+ # Trusty security VM (KeyMint/Gatekeeper TEE) as a plain KVM VM: no pKVM on this laptop.
+ # vendor/build.prop's protected_vm.supported=1 is hidden (see below), so the launcher falls back
+ # to a non-protected VM; servicemanager starts it on demand for the KeyMint accessors.
+@@ -490,6 +548,25 @@ DROP='^ro.boot.hypervisor.protected_vm.supported=|^ro.surface_flinger.has_wide_c
+   fi
+ } > /tmp/vendor.build.prop && mount --bind /tmp/vendor.build.prop /new/vendor/build.prop \
+   && log "hook: vendor build.prop: protected_vm.supported hidden, sRGB-only display, lcd_density=${DENSITY:-stock}, software GPU props=${GPU_SW:-0}"
++# Google's partitions name the device (lapis: ASUS / "ASUS Googlebook 14") in ro.product.<partition>.brand, .manufacturer, .model
++# and .marketname of vendor, product, odm, odm_dlkm, system_ext, system_dlkm and vendor_dlkm. DEVICE_BRAND / DEVICE_MODEL replace
++# those values whatever Google put there, so a newer Google build with another name is covered too. device/name (lapis) and every
++# fingerprint stay Google's, so Play Integrity still sees the same build. Runs after the vendor block above, so
++# /new/vendor/build.prop is re-bound on top of its filtered copy. Values with / \ & would break the sed: refused.
++case "$DEVICE_BRAND$DEVICE_MODEL" in */*|*\\*|*\&*) log "hook: identity: DEVICE_BRAND/DEVICE_MODEL contain / \\ or &, ignored"; DEVICE_BRAND=; DEVICE_MODEL=;; esac
++BS='s/^$//'; MS='s/^$//'
++[ -n "$DEVICE_BRAND" ] && BS="s/^\(ro\.product\.[a-z_]*\.\(brand\|manufacturer\)\)=.*/\1=$DEVICE_BRAND/"
++[ -n "$DEVICE_MODEL" ] && MS="s/^\(ro\.product\.[a-z_]*\.\(model\|marketname\)\)=.*/\1=$DEVICE_MODEL/"
++if [ -n "$DEVICE_BRAND$DEVICE_MODEL" ]; then
++  for P in /new/vendor/build.prop /new/product/etc/build.prop /new/vendor/odm/etc/build.prop /new/vendor/odm_dlkm/etc/build.prop \
++           /new/system_ext/etc/build.prop /new/system_dlkm/etc/build.prop /new/vendor_dlkm/etc/build.prop; do
++    [ -f $P ] || { log "hook: identity: $P not found"; continue; }
++    N=/tmp/ident.$(echo $P | tr / _)
++    sed -e "$BS" -e "$MS" $P > $N \
++      && mount --bind $N $P && log "hook: identity $P: brand=${DEVICE_BRAND:-Google's} model=${DEVICE_MODEL:-Google's}" \
++      || log "hook: identity $P FAILED"
++  done
++fi
+ # Only one Trusty VM may own CID 200: drop the plain launcher's auto-start so the on-demand
+ # (accessor-registering) launcher runs it, falling back to non-protected by itself.
+ R=/new/system_ext/etc/init/desktop-trusty_security_vm_launcher.rc
