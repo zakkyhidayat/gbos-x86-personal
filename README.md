@@ -165,6 +165,6 @@ since the partitions are found by label.
 | Boot time: 67.6 s -> 29.2 s to `boot_completed` (boot-4, boot-5) | works |
 | Firmware entry with `quiet`: kernel text gone (boot-8, boot-9) | works |
 | `console=ttynull` for stage0's own output | not checked yet |
-| Googlebook VM snapshot (`tools/run_vm.sh`) on the real drive | tested on an image only |
+| Googlebook VM snapshot (`tools/run_vm.sh`) on the real drive, mouse | works |
 
 Logs: `gbos/logs/boot-N/` on the GBOSSYS partition.
