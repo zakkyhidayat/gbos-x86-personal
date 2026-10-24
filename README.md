@@ -100,7 +100,14 @@ for hardware this laptop does not have:
 - Not changed: stage0's 6 s wait for a USB stick labelled `GBOS` after `GBOSSYS` appears (also in `BOOTX64.EFI`), and
   hwdetect's driver loading (~5 s).
 
-### 5. Googlebook VM (snapshot, for testing apps)
+### 5. Internal dual boot beside Fedora
+`tools/install_internal.sh` (dry run by default, `--run` asks before every step): shrinks Fedora's btrfs online, then its
+partition only once btrfs is confirmed smaller, adds GBOSSYS / GBOS_META / GBOS_DATA after it (fresh `/data`), copies
+`gbos/` from the external drive with a file-by-file compare, puts the kernel in `EFI/gbos/` on Fedora's EFI partition and
+adds "Googlebook (internal)" after Fedora in the boot order. A rerun continues after steps 1-3. Boot it with the external
+drive unplugged: both carry the same labels.
+
+### 6. Googlebook VM (snapshot, for testing apps)
 `tools/run_vm.sh` boots the same drive under QEMU/KVM from Fedora, as a throwaway snapshot: the drive is only read, every
 write goes to a temporary qcow2 overlay deleted on exit, so the laptop's own Googlebook is untouched.
 
@@ -122,7 +129,7 @@ write goes to a temporary qcow2 overlay deleted on exit, so the laptop's own Goo
 - GPU acceleration (VirGL/Venus through the host GPU) would need guest Mesa drivers, as
   [chaitan3/gbos-vm-linux](https://github.com/chaitan3/gbos-vm-linux) builds for Google's recovery image; not done here.
 
-### 6. Build and test helpers
+### 7. Build and test helpers
 - `tools/test_gbos_fp.sh`: soft_gk's token key and the sensor id list agree across files, hook.sh starts the HAL only with a
   sensor; `SENSOR=1` also probes the real sensor through docker.
 - `tools/test_tbnet.sh`: the module's vermagic, all imported symbol CRCs and its kCFI hashes match the shipped kernel; the
@@ -170,5 +177,6 @@ since the partitions are found by label.
 | Firmware entry with `quiet`: kernel text gone (boot-8, boot-9) | works |
 | `console=ttynull` for stage0's own output | not checked yet |
 | Googlebook VM snapshot (`tools/run_vm.sh`) on the real drive, mouse | works |
+| Internal dual boot (`tools/install_internal.sh`): Fedora 163.9 GiB, GBOSSYS 8 GiB, GBOS_META 64 MiB, GBOS_DATA 63.9 GiB, entry "Googlebook (internal)" | installed, first boot not checked yet |
 
 Logs: `gbos/logs/boot-N/` on the GBOSSYS partition.
