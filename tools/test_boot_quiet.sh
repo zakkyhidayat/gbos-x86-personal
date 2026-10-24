@@ -7,7 +7,7 @@ T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 n=0; bad=0
 ok() { n=$((n+1)); echo "ok   $*"; }
 no() { n=$((n+1)); bad=$((bad+1)); echo "FAIL $*"; }
-chk() { d=$1; shift; if "$@"; then ok "$d"; else no "$d"; fi; }
+chk() { d=$1; shift; if [ "$1" = '!' ]; then shift; if "$@"; then no "$d"; else ok "$d"; fi; elif "$@"; then ok "$d"; else no "$d"; fi; }
 
 # --- quiet_boot.sh against a fake root
 fake() {
@@ -50,6 +50,19 @@ chk "fstab: /data device is a LABEL= longer than 16 bytes (${#L})" [ "${U#LABEL=
 chk "fstab: other lines unchanged" [ "$(grep -v ' /data ' $T/out)" = "$(grep -v -e ' /data ' -e voldmanaged=usb $FS)" ]
 nousb() { ! grep -q voldmanaged=usb $T/out; }
 chk "fstab: vold USB rule still removed" nousb
+
+# --- hook.sh: gbos.rc without the debug extras (the template as hook.sh writes it, then its DEBUG_LOGS/KVM_TRACE edits)
+sed -n '/^  cat > \/tmp\/sysinit\/gbos.rc <<RC$/,/^RC$/p' usb/hook.sh | sed '1d;$d' > $T/rc.full
+cp $T/rc.full $T/gbos.rc; log() { :; }
+eval "$(sed -n '/^  if \[ "${DEBUG_LOGS:-0}" != 1 \]; then$/,/^  fi$/p; /^  \[ "${KVM_TRACE:-0}" = 1 \] || sed -i/p' usb/hook.sh | sed "s#/tmp/sysinit/gbos.rc#$T/gbos.rc#g")"
+has() { grep -qx "    $1" $T/gbos.rc; }
+for s in logcat audiodiag displaydiag aidiag; do chk "debug off: no start gbos_$s" ! has "start gbos_$s"; done
+for s in crashlog sync ksu; do chk "debug off: gbos_$s still started" has "start gbos_$s"; done
+chk "debug off: Trusty VM still started at early-fs" has "start trusty_security_protected_vm_launcher"
+chk "kvm trace off: no ftrace event enabled" ! grep -q '^    write /sys/kernel/tracing/events/' $T/gbos.rc
+chk "kvm trace off: no tracing_on 1 / buffer size" ! grep -q -e 'tracing_on 1' -e buffer_size_kb $T/gbos.rc
+chk "kvm trace off: only those lines removed" [ $(($(wc -l < $T/rc.full) - $(wc -l < $T/gbos.rc))) = $((5 + 16)) ]
+chk "drm.debug only with DEBUG_LOGS=1" grep -q '^\[ "${DEBUG_LOGS:-0}" = 1 \] && echo 0x04 > /sys/module/drm/parameters/debug' usb/hook.sh
 
 # --- hook.sh: the rest
 chk "gscutil.rc removed from init" grep -q '^  rm -f /tmp/sysinit/gscutil.rc' usb/hook.sh

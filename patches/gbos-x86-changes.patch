@@ -126,7 +126,7 @@ index 860faec..3d75d85 100755
  H=$ROOT/usb/hook.sh
  grep -qF "settings put global device_name '\$DEVICE_MODEL'" "$H" && ok "hook: gbos_devname sets Settings.Global.device_name" || bad "hook: no device_name service"
 diff --git a/usb/gbos.cfg b/usb/gbos.cfg
-index e0cdb85..cbcfb16 100644
+index e0cdb85..cda6cc0 100644
 --- a/usb/gbos.cfg
 +++ b/usb/gbos.cfg
 @@ -2,7 +2,8 @@
@@ -139,7 +139,7 @@ index e0cdb85..cbcfb16 100644
  # Load Intel Wi-Fi driver (firmware is not packaged yet, so it will likely complain)
  LOAD_WIFI=0
  # Seconds to pause before handing over to Android init (time to read the screen)
-@@ -68,10 +69,29 @@ MODOPTS="mt7921_common.disable_clc=1"
+@@ -68,10 +69,33 @@ MODOPTS="mt7921_common.disable_clc=1"
  # so quick flicks do nothing. By default each internal touchpad gets an IDC file with Change_Timeout=0.02. Takes effect after a boot.
  #TOUCHPAD_FLICK=0
  
@@ -161,6 +161,10 @@ index e0cdb85..cbcfb16 100644
 +# QUIET_BOOT=1 (default): no kernel/init text on the screen from the moment the drive is found until the boot animation, and
 +# none at shutdown or restart (gbos/quiet_boot.sh). Everything is still logged to logs/boot-N/kmsg.log. 0 = show the text.
 +#QUIET_BOOT=0
++# DEBUG_LOGS=1 brings back the debugging extras: the full logcat (logs/boot-N/logcat.txt*, ~10 MB per boot), KMS debug messages,
++# and the audio/display/AI diagnostics (audio.txt, display.txt, ai-*.txt). Off by default for a quicker, quieter boot; kmsg.log,
++# crash.txt, hw.txt and hwdetect.txt are always written.
++#DEBUG_LOGS=1
 +# KVM_TRACE=1 records every exit of the Trusty VM to logs/boot-N/kvmtrace.txt (~30 MB per boot, written while Android boots).
 +# Only for debugging the Trusty VM.
 +#KVM_TRACE=1
@@ -169,7 +173,7 @@ index e0cdb85..cbcfb16 100644
  # XE_PARAMS: module parameters for the xe graphics driver (Lunar Lake and newer; older Intel GPUs use i915), loaded before the
  # coldplug. On the Surface Laptop 7 the screen showed ghost images ("3D glasses") and froze: the log had "Selective fetch area
  # calculation failed in pipe A" (PSR2) followed by "CPU pipe A FIFO underrun". "enable_psr=0 enable_fbc=0" fixed it. Unset = defaults.
-@@ -79,4 +99,7 @@ MODOPTS="mt7921_common.disable_clc=1"
+@@ -79,4 +103,7 @@ MODOPTS="mt7921_common.disable_clc=1"
  
  # DEVICE_MODEL: name shown as "Model" and "Device name" in Settings > About (ro.product.model / ro.product.marketname, and
  # Settings.Global.device_name set after boot). Unset = Google's own. Only the model strings change, not the build fingerprint.
@@ -179,7 +183,7 @@ index e0cdb85..cbcfb16 100644
 +DEVICE_BRAND="LENOVO"
 +DEVICE_MODEL="ThinkPad X13 Gen 2i"
 diff --git a/usb/hook.sh b/usb/hook.sh
-index 49cf0a2..6264b45 100644
+index 49cf0a2..308c8c0 100644
 --- a/usb/hook.sh
 +++ b/usb/hook.sh
 @@ -89,6 +89,28 @@ else
@@ -211,7 +215,18 @@ index 49cf0a2..6264b45 100644
  # --- software rendering for GPUs Google's image has no driver for (AMD) -- gbos_gpu_* functions ---
  # Google's image renders through ANGLE -> Vulkan, and its only Vulkan driver is Intel's ANV (/vendor/lib64/hw/vulkan.intel.so);
  # buffers come from minigbm (gralloc, /vendor/lib64/libminigbm_gralloc.so), which has no amdgpu backend. On a laptop whose GPU
-@@ -213,9 +235,31 @@ gbos_touchpads() {
+@@ -180,7 +202,9 @@ gbos_gpu_decide ${GPU_WAIT:-25}
+ 
+ # drm.debug=0x04 (KMS only; not ATOMIC, which logs every frame): i915 dumps gamma/CSC mode and range per modeset while
+ # drm_hwcomposer first sets up the panel. gbos.rc turns it off at boot_completed. Washed-out colours.
+-echo 0x04 > /sys/module/drm/parameters/debug 2>/dev/null && log "hook: drm.debug=0x04 (KMS) until boot_completed"
++# Only with DEBUG_LOGS=1 in gbos.cfg.
++[ "${DEBUG_LOGS:-0}" = 1 ] && echo 0x04 > /sys/module/drm/parameters/debug 2>/dev/null \
++  && log "hook: drm.debug=0x04 (KMS) until boot_completed"
+ 
+ # Fake ChromeOS boot disk for the boot HAL: misc + vbmeta_a/vbmeta_b with cgpt slot attributes.
+ if [ -f $G/bootdisk.img ]; then
+@@ -213,9 +237,31 @@ gbos_touchpads() {
      if (name ~ /touchpad|trackpad/ && bus != "0003" && v != "" && p != "") print tolower(v) ":" tolower(p)
    }' ${INPUTS:-/proc/bus/input/devices} 2>/dev/null | sort -u
  }
@@ -243,7 +258,7 @@ index 49cf0a2..6264b45 100644
    # RESOLUTION in gbos.cfg: logical display size (e.g. 2400x1350) that SurfaceFlinger renders at and the
    # display hardware scales to the 1920x1080 panel, so everything looks smaller with stock density.
    case "$RESOLUTION" in [0-9]*x[0-9]*) WMSIZE=$RESOLUTION;; *) WMSIZE=reset;; esac
-@@ -240,6 +284,28 @@ if mount --bind /gbos /new/postinstall; then
+@@ -240,6 +286,28 @@ if mount --bind /gbos /new/postinstall; then
      mkdir /data/system/devices 0775 system system
      mkdir /data/system/devices/idc 0775 system system$IDCRC"
    fi
@@ -272,7 +287,7 @@ index 49cf0a2..6264b45 100644
    cat > /tmp/sysinit/gbos.rc <<RC
  # Rotate at 1 MB: on this stick, data written past ~4 MB of a file that stays open never reaches
  # the FAT cluster chain before power-off (fsck: "size ... should at most be 4046848"). Rotating
-@@ -296,6 +362,7 @@ on property:sys.boot_completed=1
+@@ -296,6 +364,7 @@ on property:sys.boot_completed=1
      start gbos_displaydiag
      start gbos_aidiag
      start gbos_ksu
@@ -280,7 +295,7 @@ index 49cf0a2..6264b45 100644
  
  # AI diagnostics (Magic Pointer / AICore): usb/aidiag.sh writes logs/boot-N/ai-1.txt (90 s) and ai-2.txt (4 min).
  # The gbos_aidns_* services run one ping per app uid so aidiag can compare DNS as AICore (10107) with
-@@ -387,6 +454,10 @@ service gbos_soft_gk /postinstall/gbos/soft_gk
+@@ -387,6 +456,10 @@ service gbos_soft_gk /postinstall/gbos/soft_gk
      seclabel u:r:hal_gatekeeper_default:s0
      interface aidl android.hardware.gatekeeper.IGatekeeper/default
  
@@ -291,7 +306,23 @@ index 49cf0a2..6264b45 100644
  # Trusty security VM (KeyMint/Gatekeeper TEE) as a plain KVM VM: no pKVM on this laptop.
  # vendor/build.prop's protected_vm.supported=1 is hidden (see below), so the launcher falls back
  # to a non-protected VM; servicemanager starts it on demand for the KeyMint accessors.
-@@ -490,6 +561,25 @@ DROP='^ro.boot.hypervisor.protected_vm.supported=|^ro.surface_flinger.has_wide_c
+@@ -435,6 +508,15 @@ on post-fs-data
+     # KernelSU: the daemon has to be in /data/adb before the kernel's own init.rc runs it.
+     start gbos_ksu
+ RC
++  # Debug logging is off unless asked for: the full logcat (~10 MB per boot written to the boot drive while Android starts) and
++  # the audio, display and AI diagnostics (dumpsys runs, pings). DEBUG_LOGS=1 in gbos.cfg brings them back. Kept either way:
++  # kmsg.log (stage0's), crash.txt (the crash buffer only, small) and the 5 s sync that keeps the FAT consistent.
++  if [ "${DEBUG_LOGS:-0}" != 1 ]; then
++    sed -i '/^    start gbos_\(logcat\|audiodiag\|displaydiag\|aidiag\)$/d' /tmp/sysinit/gbos.rc \
++      && log "hook: debug logging off (logcat, audio/display/AI diagnostics; DEBUG_LOGS=1 turns it on)"
++  fi
++  # The KVM exit trace's ftrace events (set again at early-fs, after atrace.rc resets ftrace): only with KVM_TRACE=1.
++  [ "${KVM_TRACE:-0}" = 1 ] || sed -i '/^    write \/sys\/kernel\/tracing\/\(buffer_size_kb [0-9]*\|events\/kvm\/[a-z_]*\/enable 1\|tracing_on 1\)$/d' /tmp/sysinit/gbos.rc
+   # Conscrypt (and identical) APEX libcrypto: the APEX is signed, so patch a copy and bind it over the
+   # original once apexd has activated every APEX (init.rc's "wait_for_prop apexd.status activated" is in
+   # on post-fs-data, before zygote-start). See apex_patch.sh.
+@@ -490,6 +572,25 @@ DROP='^ro.boot.hypervisor.protected_vm.supported=|^ro.surface_flinger.has_wide_c
    fi
  } > /tmp/vendor.build.prop && mount --bind /tmp/vendor.build.prop /new/vendor/build.prop \
    && log "hook: vendor build.prop: protected_vm.supported hidden, sRGB-only display, lcd_density=${DENSITY:-stock}, software GPU props=${GPU_SW:-0}"
@@ -317,7 +348,7 @@ index 49cf0a2..6264b45 100644
  # Only one Trusty VM may own CID 200: drop the plain launcher's auto-start so the on-demand
  # (accessor-registering) launcher runs it, falling back to non-protected by itself.
  R=/new/system_ext/etc/init/desktop-trusty_security_vm_launcher.rc
-@@ -539,8 +629,12 @@ fi
+@@ -539,8 +640,12 @@ fi
  # "repairs" the FAT while stage0 has it mounted (LOST.DIR, lost/truncated logs, cross-linked
  # clusters). The stick must only ever be mounted by stage0.
  F=/new/vendor/etc/fstab.android-desktop
@@ -332,7 +363,7 @@ index 49cf0a2..6264b45 100644
  # Audio: the audio HAL (dras) needs a config whose <soundcard> equals the ALSA card id. Google ships only its SOF
  # SoundWire card; gbos/audio/gbos-hda-pch is the legacy-HDA one (card id PCH, true for nearly every Intel PCH HDA
  # laptop). For any other main card (SOF: sof-hda-dsp, sof-rt5682, ...) a copy is generated with that card's id and
-@@ -603,9 +697,12 @@ fi
+@@ -603,9 +708,12 @@ fi
  log "hook: kvm: $(ls /sys/class/misc | grep -E 'kvm|vhost' | tr '\n' ' ')"
  
  # KVM trace -> kvmtrace.txt: guest exceptions / failed emulation / triple faults, to see why the

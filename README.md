@@ -73,7 +73,8 @@ for hardware this laptop does not have:
 | `gscutil.rc` waits for Google's security chip (`wait /dev/tpm0 10`) | 10 s | `hook.sh` removes it, as gbOS86 already does for `gscd.rc` |
 | Google's fstab has `userdata` with `wait`; `/data` is mounted by stage0, so `mount_all` waited 20 s for `/dev/block/by-name/userdata`, then skipped it | 20 s | `hook.sh` names that device `LABEL=gbos-data-mounted-by-stage0`: longer than any ext4 label, so fs_mgr skips it at once, the same skip without the wait. Nothing else in the entry changes |
 | stage0 `modprobe i915` fails here (stage0 has no i915 for Iris Xe; hwdetect loads it), then sleeps | 2 s | `LOAD_I915=0` in `gbos.cfg` |
-| KVM exit trace of the Trusty VM, ~30 MB written to the boot drive during boot | I/O and CPU | only with `KVM_TRACE=1` |
+| KVM exit trace of the Trusty VM, ~30 MB written to the boot drive during boot | I/O and CPU | only with `KVM_TRACE=1` (both the ftrace events and the reader) |
+| Debug logging on every boot: full logcat (~10 MB to the boot drive), KMS debug, audio/display/AI diagnostics (dumpsys, pings) | I/O and CPU | only with `DEBUG_LOGS=1`; `kmsg.log`, `crash.txt`, `hw.txt` and `hwdetect.txt` are still written |
 | Kernel and init text drawn on the framebuffer console | slows the boot, and is ugly | `usb/quiet_boot.sh` |
 
 - `usb/quiet_boot.sh`, sourced from `gbos.cfg` as soon as the drive is found: the console only shows emergencies (a panic),
@@ -92,7 +93,7 @@ for hardware this laptop does not have:
   hook block adds the service only when the module loads.
 - `tools/test_device_model.sh` (patch): the identity rewrite in all seven partitions, with a non-ASUS name.
 - `tools/test_boot_quiet.sh`: `quiet_boot.sh` against a fake `/sys` and `/proc` (quiet, `QUIET_BOOT=0`, installer, rescue
-  shell), and the fstab rewrite; give it the image's `fstab.android-desktop` to check on Google's real file.
+  shell), the generated `gbos.rc` without the debug extras (and with the Trusty VM still started), and the fstab rewrite; give it the image's `fstab.android-desktop` to check on Google's real file.
 - The patch also adds `gbos_fp`, `tbnet.sh` and `quiet_boot.sh` to gbos-x86's image, deploy and installer scripts and documents
   the options in its `gbos.cfg` and README.
 
@@ -123,6 +124,6 @@ since the partitions are found by label.
 | `thunderbolt_net` loads | works |
 | Lock-screen unlock with a fingerprint | not checked yet |
 | adb over a Thunderbolt cable (link, routing) | not checked yet |
-| Quiet boot and shutdown, ~32 s less waiting | not checked yet |
+| Quiet boot and shutdown, ~32 s less waiting, debug logging off | not checked yet |
 
 Logs: `gbos/logs/boot-N/` on the GBOSSYS partition.
