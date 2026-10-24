@@ -6,6 +6,8 @@
  *   syn_test probe   find the sensor, read its version, FPS_INIT, power down. Touches no template.
  *   syn_test cycle   enroll a throw-away template "GBOS-TEST-<random>" (touch the sensor 8+ times), identify
  *                    it (touch once), then delete it. Only that template is created and deleted.
+ *   syn_test suw     Settings' whole flow: the cancel above, then at once (finger still resting) a real enroll;
+ *                    touch until it completes, then the template is deleted again.
  *   syn_test cancel  what Android's Settings does on its "touch the sensor" screen: start an enroll, cancel it at
  *                    the first touch (expects -ECANCELED), then close and reopen the sensor (it must answer).
  *                    Nothing is stored: a cancelled enroll leaves no template.
@@ -28,6 +30,7 @@
 #define SYN_LOGI(...) (fprintf(stderr, "I: " __VA_ARGS__), fputc('\n', stderr))
 #define SYN_LOGW(...) (fprintf(stderr, "W: " __VA_ARGS__), fputc('\n', stderr))
 #define SYN_LOGE(...) (fprintf(stderr, "E: " __VA_ARGS__), fputc('\n', stderr))
+#define SYN_LOGD(...) (fprintf(stderr, "D: " __VA_ARGS__), fputc('\n', stderr))
 #include "syn.h"
 
 static bool cancel_at_capture;
@@ -77,6 +80,23 @@ int main(int argc, char **argv)
 			printf("SYN_TEST_FAIL sensor does not answer after the cancel: %d\n", r);
 		else if (r == SYN_OK)
 			printf("sensor answers again after the cancel\n");
+	} else if (strcmp(mode, "suw") == 0) {
+		cancel_at_capture = true;
+		printf("find-the-sensor enroll: touch the sensor and KEEP the finger on it\n");
+		fflush(stdout);
+		r = syn_enroll(&s, "GBOS-TEST-SUW", &ev, &fail);
+		printf("find-the-sensor enroll returned %d (want %d)\n", r, -ECANCELED);
+		syn_close(&s);
+		cancel_at_capture = false;
+		syn_clear_cancel(&s);
+		if ((r = syn_open(&s)) == 0) {
+			printf("real enroll: lift, then touch repeatedly\n");
+			fflush(stdout);
+			r = syn_enroll(&s, "GBOS-TEST-SUW", &ev, &fail);
+			printf("real enroll returned %d, sensor code %d\n", r, fail);
+			if (r == SYN_OK)
+				printf("delete: %d\n", syn_delete(&s, "GBOS-TEST-SUW", &fail));
+		}
 	} else if (strcmp(mode, "cycle") == 0) {
 		if (getrandom(&rnd, sizeof(rnd), 0) != sizeof(rnd))
 			rnd = (uint32_t)getpid();

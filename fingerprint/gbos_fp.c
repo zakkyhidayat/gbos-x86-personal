@@ -85,6 +85,7 @@ int __android_log_print(int prio, const char *tag, const char *fmt, ...) __attri
 #define LOGI(...) __android_log_print(4, "gbos_fp", __VA_ARGS__)
 #define LOGW(...) __android_log_print(5, "gbos_fp", __VA_ARGS__)
 #define LOGE(...) __android_log_print(6, "gbos_fp", __VA_ARGS__)
+#define LOGD(...) __android_log_print(3, "gbos_fp", __VA_ARGS__)
 
 /* ---- BoringSSL ---- */
 typedef struct env_md_st EVP_MD;
@@ -141,6 +142,7 @@ AStatus *AStatus_newOk(void); void AStatus_delete(AStatus *);
 #define SYN_LOGI LOGI
 #define SYN_LOGW LOGW
 #define SYN_LOGE LOGE
+#define SYN_LOGD LOGD	/* sensor message ids and result codes only */
 #include "syn.h"
 
 /* ---- AIDL ---- */
@@ -786,6 +788,7 @@ static void op_authenticate(struct session *ss)
 		template_name(names[i], ss->user, st->ids[i]);
 		list[i] = names[i];
 	}
+	LOGI("user %d: authenticate starting (%d enrollments)", ss->user, st->n);
 	if ((r = syn_open(&dev)) < 0) {
 		cb_error(ss, ERR_HW_UNAVAILABLE, 0);
 		return;
@@ -880,6 +883,7 @@ static void op_enroll(struct session *ss, const struct hat *hat)
 	} while (id == 0 || i < st->n);
 	ctx.enroll_id = id;
 	template_name(name, ss->user, id);
+	LOGI("user %d: enroll %d starting", ss->user, id);
 	if ((r = syn_open(&dev)) < 0) {
 		cb_error(ss, ERR_HW_UNAVAILABLE, 0);
 		return;

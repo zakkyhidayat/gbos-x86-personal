@@ -26,6 +26,11 @@
 #ifndef GBOS_SYN_H
 #define GBOS_SYN_H
 
+/* Per-message trace (message ids, sequence numbers and result codes only: never template or image data). */
+#ifndef SYN_LOGD
+#define SYN_LOGD(...) ((void)0)
+#endif
+
 /* ---- usbfs (linux/usbdevice_fs.h, x86_64) ---- */
 struct syn_usb_bulk { unsigned int ep, len, timeout; void *data; };
 #define SYN_USBDEVFS_BULK		0xc0185502	/* _IOWR('U', 2, struct usbdevfs_bulktransfer) */
@@ -261,6 +266,7 @@ static int syn_send(struct syn *s, int seq, uint8_t msg_id, const uint8_t *paylo
 		real_seq = (uint8_t)seq;
 		s->last_seq = real_seq;
 	}
+	SYN_LOGD("tx id 0x%02x seq %d len %d", msg_id, real_seq, len);
 	buf[0] = SYN_CMD_ACE_COMMAND;
 	buf[1] = BMKT_HEADER_ID;
 	buf[2] = real_seq;
@@ -340,7 +346,9 @@ static int syn_recv(struct syn *s, struct syn_msg *m)
 	m->id = b[2];
 	m->len = b[3];
 	memcpy(m->payload, b + 4, m->len);
-	return syn_classify(m);
+	n = syn_classify(m);
+	SYN_LOGD("rx id 0x%02x seq %d len %d result %d%s", m->id, m->seq, m->len, m->result, m->complete ? " (complete)" : "");
+	return n;
 }
 
 /* The next reply of the running command (cmd_receive_cb + the interrupt states of synaptics_cmd_run_state).
