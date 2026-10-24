@@ -64,7 +64,7 @@ index 56b5acc..db39f95 100644
     `hook.sh`/`apex_patch.sh` pin the exact originals they apply to. KernelSU's manager app and daemon
     come from the KernelSU release (`build.sh` puts them in `usb/ksu/`).
 diff --git a/tools/deploy_stick.sh b/tools/deploy_stick.sh
-index f6a27e9..9079dd2 100755
+index f6a27e9..6327a81 100755
 --- a/tools/deploy_stick.sh
 +++ b/tools/deploy_stick.sh
 @@ -23,7 +23,7 @@ put() {  # put SRC DST(relative to gbos/): copy when different
@@ -72,12 +72,12 @@ index f6a27e9..9079dd2 100755
  
  echo "deploying to $VOL"
 -for f in hook.sh install.sh aidiag.sh early_patch.sh hwdetect.sh apex_patch.sh crossystem libkm_compat.so system_ext_manifest.xml soft_gk; do put "$U/$f" "$f"; done
-+for f in hook.sh install.sh aidiag.sh early_patch.sh hwdetect.sh apex_patch.sh crossystem libkm_compat.so system_ext_manifest.xml soft_gk gbos_fp tbnet.sh; do put "$U/$f" "$f"; done
++for f in hook.sh install.sh aidiag.sh early_patch.sh hwdetect.sh apex_patch.sh crossystem libkm_compat.so system_ext_manifest.xml soft_gk gbos_fp tbnet.sh quiet_boot.sh; do put "$U/$f" "$f"; done
  for d in patched audio installer kmod ksu; do
    [ -d "$U/$d" ] || continue
    (cd "$U" && find "$d" -type f ! -name '.DS_Store') | while read -r f; do put "$U/$f" "$f"; done
 diff --git a/tools/make_gbos86_image.sh b/tools/make_gbos86_image.sh
-index 7cd63ff..ec14255 100755
+index 7cd63ff..558b012 100755
 --- a/tools/make_gbos86_image.sh
 +++ b/tools/make_gbos86_image.sh
 @@ -65,7 +65,7 @@ python3 "$U/make_super.py" "$STAGE/gbos/gbos/super.img" "$STAGE/gbos/gbos/super.
@@ -85,7 +85,7 @@ index 7cd63ff..ec14255 100755
  cp "$U/out/BOOTX64.EFI" "$STAGE/efi/EFI/BOOT/BOOTX64.EFI"
  G="$STAGE/gbos/gbos"
 -for f in hook.sh aidiag.sh early_patch.sh hwdetect.sh install.sh apex_patch.sh gbos.cfg crossystem bootdisk.img libkm_compat.so system_ext_manifest.xml soft_gk; do
-+for f in hook.sh aidiag.sh early_patch.sh hwdetect.sh install.sh apex_patch.sh gbos.cfg crossystem bootdisk.img libkm_compat.so system_ext_manifest.xml soft_gk gbos_fp tbnet.sh; do
++for f in hook.sh aidiag.sh early_patch.sh hwdetect.sh install.sh apex_patch.sh gbos.cfg crossystem bootdisk.img libkm_compat.so system_ext_manifest.xml soft_gk gbos_fp tbnet.sh quiet_boot.sh; do
    cp "$U/$f" "$G/$f"
  done
  for d in firmware patched audio installer kmod modules surface ksu; do cp -R "$U/$d" "$G/$d"; done
@@ -126,10 +126,20 @@ index 860faec..3d75d85 100755
  H=$ROOT/usb/hook.sh
  grep -qF "settings put global device_name '\$DEVICE_MODEL'" "$H" && ok "hook: gbos_devname sets Settings.Global.device_name" || bad "hook: no device_name service"
 diff --git a/usb/gbos.cfg b/usb/gbos.cfg
-index e0cdb85..18def91 100644
+index e0cdb85..cbcfb16 100644
 --- a/usb/gbos.cfg
 +++ b/usb/gbos.cfg
-@@ -68,6 +68,17 @@ MODOPTS="mt7921_common.disable_clc=1"
+@@ -2,7 +2,8 @@
+ # SHELL_AT: none | early (before drivers) | pre_android (Android root mounted at /new)
+ SHELL_AT=none
+ # Load i915 for the UHD 620. Set to 0 if the screen freezes right after "modprobe i915".
+-LOAD_I915=1
++# 0 here: stage0 has no i915 module for the X13's Iris Xe, so the modprobe only failed and cost a 2 s pause; hwdetect loads it.
++LOAD_I915=0
+ # Load Intel Wi-Fi driver (firmware is not packaged yet, so it will likely complain)
+ LOAD_WIFI=0
+ # Seconds to pause before handing over to Android init (time to read the screen)
+@@ -68,10 +69,29 @@ MODOPTS="mt7921_common.disable_clc=1"
  # so quick flicks do nothing. By default each internal touchpad gets an IDC file with Change_Timeout=0.02. Takes effect after a boot.
  #TOUCHPAD_FLICK=0
  
@@ -147,7 +157,19 @@ index e0cdb85..18def91 100644
  # Bind the SHA-NI/VNNI-free libz + libcrypto before stage0's dmctl runs (saves ~2 s of trapped SHA at boot).
  # Harmless if the file is missing; hook.sh patches later anyway.
  [ -f /gbos/gbos/early_patch.sh ] && . /gbos/gbos/early_patch.sh
-@@ -79,4 +90,7 @@ MODOPTS="mt7921_common.disable_clc=1"
+ 
++# QUIET_BOOT=1 (default): no kernel/init text on the screen from the moment the drive is found until the boot animation, and
++# none at shutdown or restart (gbos/quiet_boot.sh). Everything is still logged to logs/boot-N/kmsg.log. 0 = show the text.
++#QUIET_BOOT=0
++# KVM_TRACE=1 records every exit of the Trusty VM to logs/boot-N/kvmtrace.txt (~30 MB per boot, written while Android boots).
++# Only for debugging the Trusty VM.
++#KVM_TRACE=1
++[ -f /gbos/gbos/quiet_boot.sh ] && . /gbos/gbos/quiet_boot.sh
++
+ # XE_PARAMS: module parameters for the xe graphics driver (Lunar Lake and newer; older Intel GPUs use i915), loaded before the
+ # coldplug. On the Surface Laptop 7 the screen showed ghost images ("3D glasses") and froze: the log had "Selective fetch area
+ # calculation failed in pipe A" (PSR2) followed by "CPU pipe A FIFO underrun". "enable_psr=0 enable_fbc=0" fixed it. Unset = defaults.
+@@ -79,4 +99,7 @@ MODOPTS="mt7921_common.disable_clc=1"
  
  # DEVICE_MODEL: name shown as "Model" and "Device name" in Settings > About (ro.product.model / ro.product.marketname, and
  # Settings.Global.device_name set after boot). Unset = Google's own. Only the model strings change, not the build fingerprint.
@@ -157,7 +179,7 @@ index e0cdb85..18def91 100644
 +DEVICE_BRAND="LENOVO"
 +DEVICE_MODEL="ThinkPad X13 Gen 2i"
 diff --git a/usb/hook.sh b/usb/hook.sh
-index 49cf0a2..3112f4d 100644
+index 49cf0a2..6264b45 100644
 --- a/usb/hook.sh
 +++ b/usb/hook.sh
 @@ -89,6 +89,28 @@ else
@@ -189,7 +211,7 @@ index 49cf0a2..3112f4d 100644
  # --- software rendering for GPUs Google's image has no driver for (AMD) -- gbos_gpu_* functions ---
  # Google's image renders through ANGLE -> Vulkan, and its only Vulkan driver is Intel's ANV (/vendor/lib64/hw/vulkan.intel.so);
  # buffers come from minigbm (gralloc, /vendor/lib64/libminigbm_gralloc.so), which has no amdgpu backend. On a laptop whose GPU
-@@ -213,6 +235,16 @@ gbos_touchpads() {
+@@ -213,9 +235,31 @@ gbos_touchpads() {
      if (name ~ /touchpad|trackpad/ && bus != "0003" && v != "" && p != "") print tolower(v) ":" tolower(p)
    }' ${INPUTS:-/proc/bus/input/devices} 2>/dev/null | sort -u
  }
@@ -206,7 +228,22 @@ index 49cf0a2..3112f4d 100644
  if mount --bind /gbos /new/postinstall; then
    mkdir -p /tmp/sysinit && cp -a /new/system/etc/init/. /tmp/sysinit/
    rm -f /tmp/sysinit/gscd.rc   # gscd needs Google's security chip (/dev/tpm0); it only crash-loops here
-@@ -240,6 +272,28 @@ if mount --bind /gbos /new/postinstall; then
++  # gscutil (firmware update for that chip) first waits 10 s for /dev/tpm0 at post-fs, holding up the whole boot, then fails.
++  rm -f /tmp/sysinit/gscutil.rc && log "hook: gscutil disabled (no Google security chip, saves its 10 s /dev/tpm0 wait)"
++  # Quiet shutdown (QUIET_BOOT, gbos/quiet_boot.sh): the kernel's last "Restarting system" / "Power down" is an emergency-level
++  # message that still reaches the text console once SurfaceFlinger lets go of the screen. Unbind the framebuffer console at
++  # shutdown so the screen stays dark.
++  QUIETRC=
++  if [ "${QUIET_BOOT:-1}" != 0 ]; then
++    for v in /sys/class/vtconsole/vtcon*; do
++      grep -q 'frame buffer' $v/name 2>/dev/null && QUIETRC="on shutdown
++    write $v/bind 0" && log "hook: quiet shutdown ($v)" && break
++    done
++  fi
+   # RESOLUTION in gbos.cfg: logical display size (e.g. 2400x1350) that SurfaceFlinger renders at and the
+   # display hardware scales to the 1920x1080 panel, so everything looks smaller with stock density.
+   case "$RESOLUTION" in [0-9]*x[0-9]*) WMSIZE=$RESOLUTION;; *) WMSIZE=reset;; esac
+@@ -240,6 +284,28 @@ if mount --bind /gbos /new/postinstall; then
      mkdir /data/system/devices 0775 system system
      mkdir /data/system/devices/idc 0775 system system$IDCRC"
    fi
@@ -235,7 +272,15 @@ index 49cf0a2..3112f4d 100644
    cat > /tmp/sysinit/gbos.rc <<RC
  # Rotate at 1 MB: on this stick, data written past ~4 MB of a file that stays open never reaches
  # the FAT cluster chain before power-off (fsck: "size ... should at most be 4046848"). Rotating
-@@ -387,6 +441,10 @@ service gbos_soft_gk /postinstall/gbos/soft_gk
+@@ -296,6 +362,7 @@ on property:sys.boot_completed=1
+     start gbos_displaydiag
+     start gbos_aidiag
+     start gbos_ksu
++$QUIETRC
+ 
+ # AI diagnostics (Magic Pointer / AICore): usb/aidiag.sh writes logs/boot-N/ai-1.txt (90 s) and ai-2.txt (4 min).
+ # The gbos_aidns_* services run one ping per app uid so aidiag can compare DNS as AICore (10107) with
+@@ -387,6 +454,10 @@ service gbos_soft_gk /postinstall/gbos/soft_gk
      seclabel u:r:hal_gatekeeper_default:s0
      interface aidl android.hardware.gatekeeper.IGatekeeper/default
  
@@ -246,7 +291,7 @@ index 49cf0a2..3112f4d 100644
  # Trusty security VM (KeyMint/Gatekeeper TEE) as a plain KVM VM: no pKVM on this laptop.
  # vendor/build.prop's protected_vm.supported=1 is hidden (see below), so the launcher falls back
  # to a non-protected VM; servicemanager starts it on demand for the KeyMint accessors.
-@@ -490,6 +548,25 @@ DROP='^ro.boot.hypervisor.protected_vm.supported=|^ro.surface_flinger.has_wide_c
+@@ -490,6 +561,25 @@ DROP='^ro.boot.hypervisor.protected_vm.supported=|^ro.surface_flinger.has_wide_c
    fi
  } > /tmp/vendor.build.prop && mount --bind /tmp/vendor.build.prop /new/vendor/build.prop \
    && log "hook: vendor build.prop: protected_vm.supported hidden, sRGB-only display, lcd_density=${DENSITY:-stock}, software GPU props=${GPU_SW:-0}"
@@ -272,3 +317,46 @@ index 49cf0a2..3112f4d 100644
  # Only one Trusty VM may own CID 200: drop the plain launcher's auto-start so the on-demand
  # (accessor-registering) launcher runs it, falling back to non-protected by itself.
  R=/new/system_ext/etc/init/desktop-trusty_security_vm_launcher.rc
+@@ -539,8 +629,12 @@ fi
+ # "repairs" the FAT while stage0 has it mounted (LOST.DIR, lost/truncated logs, cross-linked
+ # clusters). The stick must only ever be mounted by stage0.
+ F=/new/vendor/etc/fstab.android-desktop
+-grep -v 'voldmanaged=usb' $F > /tmp/fstab.android-desktop \
+-  && mount --bind /tmp/fstab.android-desktop $F && log "hook: vold USB rule removed from fstab"
++# /data is mounted by stage0 and /dev/block/by-name/userdata never appears, so init's mount_all waited the full 20 s of the
++# entry's "wait" flag and then skipped it ("Skipping ... during mount_all"). A LABEL= device longer than ext4's 16-byte label
++# makes fs_mgr skip the entry the same way at once ("Could not translate label"), before it waits; it can never match a disk.
++grep -v 'voldmanaged=usb' $F | sed 's#^/dev/block/by-name/userdata #LABEL=gbos-data-mounted-by-stage0 #' > /tmp/fstab.android-desktop \
++  && mount --bind /tmp/fstab.android-desktop $F && log "hook: vold USB rule removed from fstab" \
++  && grep -q '^LABEL=gbos-data-mounted-by-stage0 /data ' $F && log "hook: fstab userdata skipped without the 20 s wait"
+ # Audio: the audio HAL (dras) needs a config whose <soundcard> equals the ALSA card id. Google ships only its SOF
+ # SoundWire card; gbos/audio/gbos-hda-pch is the legacy-HDA one (card id PCH, true for nearly every Intel PCH HDA
+ # laptop). For any other main card (SOF: sof-hda-dsp, sof-rt5682, ...) a copy is generated with that card's id and
+@@ -603,9 +697,12 @@ fi
+ log "hook: kvm: $(ls /sys/class/misc | grep -E 'kvm|vhost' | tr '\n' ' ')"
+ 
+ # KVM trace -> kvmtrace.txt: guest exceptions / failed emulation / triple faults, to see why the
+-# Trusty VM goes silent. Reader opens trace_pipe now so it survives switch_root.
++# Trusty VM goes silent. Reader opens trace_pipe now so it survives switch_root. Off unless KVM_TRACE=1 in gbos.cfg: it wrote
++# ~30 MB to the boot drive while Android booted.
+ T=/tmp/tracing; mkdir -p $T
+-if mount -t tracefs tracefs $T; then
++if [ "${KVM_TRACE:-0}" != 1 ]; then
++  log "hook: kvm tracing off (KVM_TRACE=1 in gbos.cfg turns it on)"
++elif mount -t tracefs tracefs $T; then
+   E=$T/events/kvm
+   echo 8192 > $T/buffer_size_kb
+   for ev in kvm_inj_exception kvm_emulate_insn kvm_userspace_exit kvm_exit kvm_pio kvm_mmio kvm_hypercall kvm_fast_mmio kvm_inj_virq kvm_pic_set_irq kvm_ioapic_set_irq kvm_msi_set_irq kvm_set_irq kvm_apic_accept_irq; do
+diff --git a/usb/install.sh b/usb/install.sh
+index 2a90b15..39149a1 100644
+--- a/usb/install.sh
++++ b/usb/install.sh
+@@ -63,7 +63,7 @@ EFIPART=/dev/$(ls /sys/class/block/$STICKDISK | grep -m1 "^${STICKDISK}p\?1$")
+ mkdir -p /mnt/stickefi && mount -t vfat -o ro $EFIPART /mnt/stickefi 2>/dev/null \
+   || die "cannot mount the stick's EFI partition ($EFIPART)"
+ KERNEL=/mnt/stickefi/EFI/BOOT/BOOTX64.EFI
+-FILES="super.img super.layout hook.sh aidiag.sh early_patch.sh hwdetect.sh apex_patch.sh crossystem bootdisk.img libkm_compat.so system_ext_manifest.xml soft_gk"
++FILES="super.img super.layout hook.sh aidiag.sh early_patch.sh hwdetect.sh apex_patch.sh crossystem bootdisk.img libkm_compat.so system_ext_manifest.xml soft_gk gbos_fp tbnet.sh quiet_boot.sh"
+ DIRS="firmware patched audio installer kmod modules surface ksu"
+ for f in $FILES; do [ -f $G/$f ] || die "missing gbos/$f on the stick"; done
+ for d in $DIRS; do [ -d $G/$d ] || die "missing gbos/$d/ on the stick"; done

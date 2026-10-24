@@ -10,9 +10,9 @@ G=${1:?usage: $0 /path/to/gbos-x86}
 cd "$HERE"
 for f in fingerprint/build.sh fingerprint/gbos_fp.c fingerprint/syn.h fingerprint/syn_test.c \
 	 kernel/isa_emu_patch/build_extra_module.sh kernel/symvers_from_modules.py \
-	 tools/test_gbos_fp.sh tools/test_tbnet.sh usb/gbos_fp usb/kmod/thunderbolt_net.ko usb/tbnet.sh; do
+	 tools/test_boot_quiet.sh tools/test_gbos_fp.sh tools/test_tbnet.sh usb/gbos_fp usb/kmod/thunderbolt_net.ko usb/quiet_boot.sh usb/tbnet.sh; do
   mkdir -p "$G/$(dirname "$f")"
   cp -p "$f" "$G/$f"
 done
 git -C "$G" apply --3way "$HERE/patches/gbos-x86-changes.patch"
-echo "applied to $G (upstream $(git -C "$G" rev-parse --short HEAD)); run its tools/test_gbos_fp.sh, test_tbnet.sh and test_device_model.sh"
+echo "applied to $G (upstream $(git -C "$G" rev-parse --short HEAD)); run its tools/test_gbos_fp.sh, test_tbnet.sh, test_device_model.sh and test_boot_quiet.sh"

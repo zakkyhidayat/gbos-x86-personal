@@ -63,21 +63,45 @@ image has no USB gadget setup either.
   10.42.0.1/24`, then `adb connect 10.42.0.2:<port>` (Wireless debugging's port, or 5555 after `adb tcpip 5555`).
 - Wireless debugging and a USB Ethernet adapter (r8152, ax88179, cdc_ether in gbOS86's kernel) work too.
 
-### 4. Build and test helpers
+### 4. Quiet and faster boot
+Measured on the laptop: about 67 s from power-on to `boot_completed`, with the whole kernel log scrolling on screen until the
+Googlebook animation (the kernel's built-in command line has `loglevel=8 ignore_loglevel`). Most of the time was spent waiting
+for hardware this laptop does not have:
+
+| Where | Cost | Fix |
+|---|---|---|
+| `gscutil.rc` waits for Google's security chip (`wait /dev/tpm0 10`) | 10 s | `hook.sh` removes it, as gbOS86 already does for `gscd.rc` |
+| Google's fstab has `userdata` with `wait`; `/data` is mounted by stage0, so `mount_all` waited 20 s for `/dev/block/by-name/userdata`, then skipped it | 20 s | `hook.sh` names that device `LABEL=gbos-data-mounted-by-stage0`: longer than any ext4 label, so fs_mgr skips it at once, the same skip without the wait. Nothing else in the entry changes |
+| stage0 `modprobe i915` fails here (stage0 has no i915 for Iris Xe; hwdetect loads it), then sleeps | 2 s | `LOAD_I915=0` in `gbos.cfg` |
+| KVM exit trace of the Trusty VM, ~30 MB written to the boot drive during boot | I/O and CPU | only with `KVM_TRACE=1` |
+| Kernel and init text drawn on the framebuffer console | slows the boot, and is ugly | `usb/quiet_boot.sh` |
+
+- `usb/quiet_boot.sh`, sourced from `gbos.cfg` as soon as the drive is found: the console only shows emergencies (a panic),
+  the screen is cleared and the cursor hidden. Every message still goes to `logs/boot-N/kmsg.log`. If stage0 fails, its rescue
+  shell brings the text back with the last 30 messages. The installer is left alone. `QUIET_BOOT=0` keeps the text.
+- At shutdown and restart, `gbos.rc` unbinds the framebuffer console, so no text appears after the desktop goes away.
+- Still visible: the first seconds of text, until the drive is found. That comes from the kernel's built-in command line and
+  stage0, both inside upstream's `BOOTX64.EFI`, and would need a boot loader that passes `quiet` (or a rebuilt kernel).
+- Not changed: stage0's 6 s wait for a USB stick labelled `GBOS` after `GBOSSYS` appears (also in `BOOTX64.EFI`), and
+  hwdetect's driver loading (~5 s).
+
+### 5. Build and test helpers
 - `tools/test_gbos_fp.sh`: soft_gk's token key and the sensor id list agree across files, hook.sh starts the HAL only with a
   sensor; `SENSOR=1` also probes the real sensor through docker.
 - `tools/test_tbnet.sh`: the module's vermagic, all imported symbol CRCs and its kCFI hashes match the shipped kernel; the
   hook block adds the service only when the module loads.
 - `tools/test_device_model.sh` (patch): the identity rewrite in all seven partitions, with a non-ASUS name.
-- The patch also adds `gbos_fp` and `tbnet.sh` to gbos-x86's image and deploy scripts and documents the options in its
-  `gbos.cfg` and README.
+- `tools/test_boot_quiet.sh`: `quiet_boot.sh` against a fake `/sys` and `/proc` (quiet, `QUIET_BOOT=0`, installer, rescue
+  shell), and the fstab rewrite; give it the image's `fstab.android-desktop` to check on Google's real file.
+- The patch also adds `gbos_fp`, `tbnet.sh` and `quiet_boot.sh` to gbos-x86's image, deploy and installer scripts and documents
+  the options in its `gbos.cfg` and README.
 
 ## Use
 
 ```sh
 git clone https://github.com/linuxkid473/gbos-x86
 ./apply.sh ../gbos-x86
-cd ../gbos-x86 && sh tools/test_gbos_fp.sh && sh tools/test_tbnet.sh && sh tools/test_device_model.sh
+cd ../gbos-x86 && sh tools/test_gbos_fp.sh && sh tools/test_tbnet.sh && sh tools/test_device_model.sh && sh tools/test_boot_quiet.sh
 ./build.sh --looper --data-size 100      # 128 GB drive; flash dist/gbOS86-looper-*.img with dd
 ```
 
@@ -99,5 +123,6 @@ since the partitions are found by label.
 | `thunderbolt_net` loads | works |
 | Lock-screen unlock with a fingerprint | not checked yet |
 | adb over a Thunderbolt cable (link, routing) | not checked yet |
+| Quiet boot and shutdown, ~32 s less waiting | not checked yet |
 
 Logs: `gbos/logs/boot-N/` on the GBOSSYS partition.
