@@ -183,13 +183,23 @@ index e0cdb85..cda6cc0 100644
 +DEVICE_BRAND="LENOVO"
 +DEVICE_MODEL="ThinkPad X13 Gen 2i"
 diff --git a/usb/hook.sh b/usb/hook.sh
-index 49cf0a2..88bd224 100644
+index 49cf0a2..f329370 100644
 --- a/usb/hook.sh
 +++ b/usb/hook.sh
-@@ -89,6 +89,28 @@ else
+@@ -89,6 +89,38 @@ else
    fi
  fi
  
++# QEMU/KVM (tools/run_vm.sh): a virtio GPU (PCI 1af4:1050) only exists in a VM. Its driver (CONFIG_DRM_VIRTIO_GPU, left out of
++# the shipped kernel) is built like thunderbolt_net into gbos/kmod/ together with virtio_dma_buf. Google's minigbm already has
++# a virtio_gpu backend, so with the driver bound the software-rendering path below (SwiftShader) can draw. Never on the laptop.
++if grep -qx 0x1050 /sys/bus/pci/devices/*/device 2>/dev/null && grep -qx 0x1af4 $(dirname $(grep -lx 0x1050 /sys/bus/pci/devices/*/device | head -1))/vendor \
++   && [ -f $G/kmod/virtio-gpu.ko ]; then
++  grep -q '^virtio_pci ' /proc/modules || modprobe virtio_pci
++  insmod $G/kmod/virtio_dma_buf.ko; insmod $G/kmod/virtio-gpu.ko && log "hook: VM: virtio-gpu loaded" \
++    || log "hook: VM: virtio-gpu load FAILED: $(dmesg | grep -iE 'virtio|disagrees|Unknown symbol' | tail -2 | tr '\n' ' ')"
++fi
++
 +# Thunderbolt networking: thunderbolt_net (CONFIG_USB4_NET, left out of the shipped kernel; built for it by
 +# kernel/isa_emu_patch/build_extra_module.sh into gbos/kmod/) turns a Thunderbolt/USB4 cable to another computer into a
 +# network link (thunderbolt0), which gbos_tbnet (usb/tbnet.sh) addresses for adb over the cable. The peer can appear any
@@ -215,7 +225,7 @@ index 49cf0a2..88bd224 100644
  # --- software rendering for GPUs Google's image has no driver for (AMD) -- gbos_gpu_* functions ---
  # Google's image renders through ANGLE -> Vulkan, and its only Vulkan driver is Intel's ANV (/vendor/lib64/hw/vulkan.intel.so);
  # buffers come from minigbm (gralloc, /vendor/lib64/libminigbm_gralloc.so), which has no amdgpu backend. On a laptop whose GPU
-@@ -180,7 +202,9 @@ gbos_gpu_decide ${GPU_WAIT:-25}
+@@ -180,7 +212,9 @@ gbos_gpu_decide ${GPU_WAIT:-25}
  
  # drm.debug=0x04 (KMS only; not ATOMIC, which logs every frame): i915 dumps gamma/CSC mode and range per modeset while
  # drm_hwcomposer first sets up the panel. gbos.rc turns it off at boot_completed. Washed-out colours.
@@ -226,7 +236,7 @@ index 49cf0a2..88bd224 100644
  
  # Fake ChromeOS boot disk for the boot HAL: misc + vbmeta_a/vbmeta_b with cgpt slot attributes.
  if [ -f $G/bootdisk.img ]; then
-@@ -213,9 +237,34 @@ gbos_touchpads() {
+@@ -213,9 +247,34 @@ gbos_touchpads() {
      if (name ~ /touchpad|trackpad/ && bus != "0003" && v != "" && p != "") print tolower(v) ":" tolower(p)
    }' ${INPUTS:-/proc/bus/input/devices} 2>/dev/null | sort -u
  }
@@ -261,7 +271,7 @@ index 49cf0a2..88bd224 100644
    # RESOLUTION in gbos.cfg: logical display size (e.g. 2400x1350) that SurfaceFlinger renders at and the
    # display hardware scales to the 1920x1080 panel, so everything looks smaller with stock density.
    case "$RESOLUTION" in [0-9]*x[0-9]*) WMSIZE=$RESOLUTION;; *) WMSIZE=reset;; esac
-@@ -240,6 +289,28 @@ if mount --bind /gbos /new/postinstall; then
+@@ -240,6 +299,28 @@ if mount --bind /gbos /new/postinstall; then
      mkdir /data/system/devices 0775 system system
      mkdir /data/system/devices/idc 0775 system system$IDCRC"
    fi
@@ -290,7 +300,7 @@ index 49cf0a2..88bd224 100644
    cat > /tmp/sysinit/gbos.rc <<RC
  # Rotate at 1 MB: on this stick, data written past ~4 MB of a file that stays open never reaches
  # the FAT cluster chain before power-off (fsck: "size ... should at most be 4046848"). Rotating
-@@ -296,6 +367,7 @@ on property:sys.boot_completed=1
+@@ -296,6 +377,7 @@ on property:sys.boot_completed=1
      start gbos_displaydiag
      start gbos_aidiag
      start gbos_ksu
@@ -298,7 +308,7 @@ index 49cf0a2..88bd224 100644
  
  # AI diagnostics (Magic Pointer / AICore): usb/aidiag.sh writes logs/boot-N/ai-1.txt (90 s) and ai-2.txt (4 min).
  # The gbos_aidns_* services run one ping per app uid so aidiag can compare DNS as AICore (10107) with
-@@ -387,6 +459,10 @@ service gbos_soft_gk /postinstall/gbos/soft_gk
+@@ -387,6 +469,10 @@ service gbos_soft_gk /postinstall/gbos/soft_gk
      seclabel u:r:hal_gatekeeper_default:s0
      interface aidl android.hardware.gatekeeper.IGatekeeper/default
  
@@ -309,7 +319,7 @@ index 49cf0a2..88bd224 100644
  # Trusty security VM (KeyMint/Gatekeeper TEE) as a plain KVM VM: no pKVM on this laptop.
  # vendor/build.prop's protected_vm.supported=1 is hidden (see below), so the launcher falls back
  # to a non-protected VM; servicemanager starts it on demand for the KeyMint accessors.
-@@ -435,6 +511,15 @@ on post-fs-data
+@@ -435,6 +521,15 @@ on post-fs-data
      # KernelSU: the daemon has to be in /data/adb before the kernel's own init.rc runs it.
      start gbos_ksu
  RC
@@ -325,7 +335,7 @@ index 49cf0a2..88bd224 100644
    # Conscrypt (and identical) APEX libcrypto: the APEX is signed, so patch a copy and bind it over the
    # original once apexd has activated every APEX (init.rc's "wait_for_prop apexd.status activated" is in
    # on post-fs-data, before zygote-start). See apex_patch.sh.
-@@ -490,6 +575,25 @@ DROP='^ro.boot.hypervisor.protected_vm.supported=|^ro.surface_flinger.has_wide_c
+@@ -490,6 +585,25 @@ DROP='^ro.boot.hypervisor.protected_vm.supported=|^ro.surface_flinger.has_wide_c
    fi
  } > /tmp/vendor.build.prop && mount --bind /tmp/vendor.build.prop /new/vendor/build.prop \
    && log "hook: vendor build.prop: protected_vm.supported hidden, sRGB-only display, lcd_density=${DENSITY:-stock}, software GPU props=${GPU_SW:-0}"
@@ -351,7 +361,7 @@ index 49cf0a2..88bd224 100644
  # Only one Trusty VM may own CID 200: drop the plain launcher's auto-start so the on-demand
  # (accessor-registering) launcher runs it, falling back to non-protected by itself.
  R=/new/system_ext/etc/init/desktop-trusty_security_vm_launcher.rc
-@@ -539,8 +643,12 @@ fi
+@@ -539,8 +653,12 @@ fi
  # "repairs" the FAT while stage0 has it mounted (LOST.DIR, lost/truncated logs, cross-linked
  # clusters). The stick must only ever be mounted by stage0.
  F=/new/vendor/etc/fstab.android-desktop
@@ -366,7 +376,7 @@ index 49cf0a2..88bd224 100644
  # Audio: the audio HAL (dras) needs a config whose <soundcard> equals the ALSA card id. Google ships only its SOF
  # SoundWire card; gbos/audio/gbos-hda-pch is the legacy-HDA one (card id PCH, true for nearly every Intel PCH HDA
  # laptop). For any other main card (SOF: sof-hda-dsp, sof-rt5682, ...) a copy is generated with that card's id and
-@@ -600,12 +708,21 @@ if [ -f $G/audio/gbos-hda-pch/audio_config.xml ]; then
+@@ -600,12 +718,21 @@ if [ -f $G/audio/gbos-hda-pch/audio_config.xml ]; then
  fi
  # apgetty (UART shell) has no UART configured here and crash-loops
  : > /tmp/empty.rc && mount --bind /tmp/empty.rc /new/system_ext/etc/init/apgetty.rc && log "hook: apgetty disabled"

@@ -2,6 +2,8 @@
 # Build one more module for the SHIPPED kernel without rebuilding it. Runs in gbos-kbuild:
 #   docker run --rm -v gbos-ksrc:/build -v <repo>:/repo gbos-kbuild sh /repo/kernel/isa_emu_patch/build_extra_module.sh \
 #     USB4_NET drivers/net/thunderbolt thunderbolt_net
+# For a VM: DRM_VIRTIO_GPU drivers/virtio virtio_dma_buf, then (EXTRA_SYMBOLS=/build/extmod/virtio_dma_buf/Module.symvers)
+#     DRM_VIRTIO_GPU drivers/gpu/drm/virtio virtio-gpu
 # The module must match the running kernel exactly, so nothing is guessed:
 #   - config: the shipped kernel's own, read from the IKCONFIG embedded in usb/out/BOOTX64.EFI, plus CONFIG_<SYM>=m
 #   - symbol CRCs (CONFIG_MODVERSIONS): kernel/symvers_from_modules.py recovers them from the shipped usb/modules tree
@@ -44,8 +46,24 @@ got=$($M -s kernelrelease)
 [ "$got" = "$REL" ] || { echo "kernel release $got differs from the shipped $REL"; exit 1; }
 
 python3 $R/kernel/symvers_from_modules.py "$TREE" $O/Module.symvers
+# EXTRA_CRC_OBJS: built-in objects (e.g. drivers/dma-buf/dma-buf.o) exporting symbols no shipped module imports, so their CRCs
+# cannot be recovered. They are compiled here with the same config and compiler and genksyms' "#SYMVER name crc" lines are
+# taken from their .cmd files, but only if every CRC of that object already known from the shipped modules agrees.
+for obj in $EXTRA_CRC_OBJS; do
+  $M $obj >/dev/null
+  cmd=$O/$(dirname $obj)/.$(basename $obj).cmd
+  grep '^#SYMVER ' $cmd > $O/symver.list
+  while read -r _ sym crc; do
+    old=$(awk -v s="$sym" '$2 == s { print $1 }' $O/Module.symvers)
+    if [ -n "$old" ]; then [ "$old" = "$crc" ] || { echo "CRC MISMATCH $sym: shipped $old, built $crc"; exit 1; }
+    else printf '%s\t%s\tvmlinux\tEXPORT_SYMBOL_GPL\t\n' "$crc" "$sym" >> $O/Module.symvers.extra; fi
+  done < $O/symver.list
+  n=$(grep -c '^#SYMVER ' $cmd); echo "$obj: $n CRCs, $(grep -c . $O/Module.symvers.extra 2>/dev/null || echo 0) added so far, the rest agree with the shipped modules"
+done
+[ -f $O/Module.symvers.extra ] && cat $O/Module.symvers.extra >> $O/Module.symvers && rm $O/Module.symvers.extra
 rm -rf /build/extmod/$MOD && cp -a /build/src/$DIR /build/extmod/$MOD
-$M M=/build/extmod/$MOD modules 2>&1 | tee /build/extmod/$MOD.log | tail -n 20
+# EXTRA_SYMBOLS: Module.symvers of a module this one imports from (built by an earlier run, e.g. virtio_dma_buf for virtio-gpu).
+$M M=/build/extmod/$MOD ${EXTRA_SYMBOLS:+KBUILD_EXTRA_SYMBOLS=$EXTRA_SYMBOLS} modules 2>&1 | tee /build/extmod/$MOD.log | tail -n 20
 if grep -q 'WARNING: modpost:.*undefined\|has no CRC' /build/extmod/$MOD.log; then
   echo "modpost could not resolve every imported symbol's CRC: refusing to ship"; exit 1
 fi

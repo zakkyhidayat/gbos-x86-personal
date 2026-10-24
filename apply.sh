@@ -10,7 +10,7 @@ G=${1:?usage: $0 /path/to/gbos-x86}
 cd "$HERE"
 for f in fingerprint/build.sh fingerprint/gbos_fp.c fingerprint/syn.h fingerprint/syn_test.c \
 	 kernel/isa_emu_patch/build_extra_module.sh kernel/symvers_from_modules.py \
-	 tools/test_boot_quiet.sh tools/test_gbos_fp.sh tools/test_tbnet.sh usb/gbos_fp usb/kmod/thunderbolt_net.ko usb/quiet_boot.sh usb/tbnet.sh; do
+	 tools/test_boot_quiet.sh tools/test_gbos_fp.sh tools/test_tbnet.sh usb/gbos_fp usb/kmod/thunderbolt_net.ko usb/kmod/virtio_dma_buf.ko usb/kmod/virtio-gpu.ko tools/run_vm.sh usb/quiet_boot.sh usb/tbnet.sh; do
   mkdir -p "$G/$(dirname "$f")"
   cp -p "$f" "$G/$f"
 done

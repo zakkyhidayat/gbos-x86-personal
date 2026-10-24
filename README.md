@@ -100,7 +100,25 @@ for hardware this laptop does not have:
 - Not changed: stage0's 6 s wait for a USB stick labelled `GBOS` after `GBOSSYS` appears (also in `BOOTX64.EFI`), and
   hwdetect's driver loading (~5 s).
 
-### 5. Build and test helpers
+### 5. Googlebook VM (snapshot, for testing apps)
+`tools/run_vm.sh` boots the same drive under QEMU/KVM from Fedora, as a throwaway snapshot: the drive is only read, every
+write goes to a temporary qcow2 overlay deleted on exit, so the laptop's own Googlebook is untouched.
+
+- The shipped kernel has no virtio GPU driver, so Android's SurfaceFlinger crashed in a VM. `usb/kmod/virtio-gpu.ko` and
+  `virtio_dma_buf.ko` are built for it by `build_extra_module.sh`; CRCs of symbols no shipped module imports are computed from
+  the kernel's own objects (`EXTRA_CRC_OBJS`) and the build refuses on any mismatch with the ~100 already known (there was
+  none). `hook.sh` loads them only when a virtio GPU (PCI 1af4:1050) exists, i.e. never on the laptop.
+- Google's minigbm already has a `virtio_gpu` backend, so gbOS86's software-rendering path (SwiftShader) draws: it works,
+  not fast. No fingerprint, Wi-Fi (Ethernet instead), Bluetooth or real sound in the VM.
+- `sudo` only to give this user read access to the drive (`setfacl`, removed on exit); QEMU runs as the user. It refuses a
+  disk without all four GBOS labels or the one Linux runs from, and unmounts the drive's partitions first.
+- adb: `adb connect 127.0.0.1:5556`.
+- Tested on a disk image built from the drive's files: boots to Android's UI, base image unchanged (same md5 after),
+  overlay removed.
+- GPU acceleration (VirGL/Venus through the host GPU) would need guest Mesa drivers, as
+  [chaitan3/gbos-vm-linux](https://github.com/chaitan3/gbos-vm-linux) builds for Google's recovery image; not done here.
+
+### 6. Build and test helpers
 - `tools/test_gbos_fp.sh`: soft_gk's token key and the sensor id list agree across files, hook.sh starts the HAL only with a
   sensor; `SENSOR=1` also probes the real sensor through docker.
 - `tools/test_tbnet.sh`: the module's vermagic, all imported symbol CRCs and its kCFI hashes match the shipped kernel; the
@@ -147,5 +165,6 @@ since the partitions are found by label.
 | Boot time: 67.6 s -> 29.2 s to `boot_completed` (boot-4, boot-5) | works |
 | Firmware entry with `quiet`: kernel text gone (boot-8, boot-9) | works |
 | `console=ttynull` for stage0's own output | not checked yet |
+| Googlebook VM snapshot (`tools/run_vm.sh`) on the real drive | tested on an image only |
 
 Logs: `gbos/logs/boot-N/` on the GBOSSYS partition.
