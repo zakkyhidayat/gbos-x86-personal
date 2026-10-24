@@ -1,17 +1,68 @@
-# gbos-x13g2
+# Personal Googlebook x86-64 script for ThinkPad X13 Gen 2i
 
-My own additions for running [gbOS86](https://github.com/linuxkid473/gbos-x86) on a ThinkPad X13 Gen 2i (20WL). Personal use.
-This repo holds only my files; gbos-x86 itself is not copied here. `apply.sh` puts them onto a gbos-x86 checkout.
+My own additions for running Googlebook OS on x86-64 through [gbOS86](https://github.com/linuxkid473/gbos-x86) on a
+**ThinkPad X13 Gen 2i** (machine type 20WL, Intel i5-1145G7, Synaptics 06cb:00f9 fingerprint reader). Personal use only.
 
-| What | Files |
-|---|---|
-| Lenovo identity: Settings shows "ThinkPad X13 Gen 2i", brand LENOVO, in every partition's build.prop, whatever name Google's build uses (fingerprint stays Google's) | `patches/gbos-x86-changes.patch` (`usb/hook.sh`, `usb/gbos.cfg`) |
-| Fingerprint HAL for the Synaptics match-on-chip sensor (06cb:00f9): AIDL V4 IFingerprint, WEAK, enrolling needs the lock-screen password | `fingerprint/` (source; `syn.h` ports libfprint's driver, LGPL-2.1), `usb/gbos_fp` (binary) |
-| adb over a Thunderbolt cable: `thunderbolt_net` built for gbOS86's kernel, this side 10.42.0.2/24 | `usb/kmod/thunderbolt_net.ko`, `usb/tbnet.sh`, `kernel/isa_emu_patch/build_extra_module.sh`, `kernel/symvers_from_modules.py` |
-| Tests | `tools/test_gbos_fp.sh`, `tools/test_tbnet.sh`, identity checks in the patch's `tools/test_device_model.sh` |
+This repo holds only my files. gbos-x86 itself is not copied here: `apply.sh` puts these files onto a gbos-x86 checkout and
+applies `patches/gbos-x86-changes.patch` to the few upstream files they hook into.
 
-The patch also adds `gbos_fp` and `tbnet.sh` to gbos-x86's image and deploy scripts, documents the options in `gbos.cfg`
-(`FINGERPRINT=0`, `TB_NET=0`, `TB_NET_IP`), and notes them in its README.
+Current base: upstream `729b9c3` (kernel #42, `6.18.21-gbos-whl`, module tree r5, release v40).
+
+## What it changes and adds
+
+### 1. Lenovo identity instead of "ASUS Googlebook 14"
+Google's lapis build names the device ASUS / "ASUS Googlebook 14" in the `ro.product.<partition>.brand`, `.manufacturer`,
+`.model` and `.marketname` of seven partitions (vendor, product, odm, odm_dlkm, system_ext, system_dlkm, vendor_dlkm).
+gbOS86's own `DEVICE_MODEL` only covered the vendor model lines.
+
+- `usb/hook.sh` (patch): `DEVICE_BRAND` / `DEVICE_MODEL` from `gbos.cfg` replace those values in all seven, whatever name
+  Google's build uses, so a newer Google build is covered too. Values with `/ \ &` are refused.
+- `usb/gbos.cfg` (patch): `DEVICE_BRAND="LENOVO"`, `DEVICE_MODEL="ThinkPad X13 Gen 2i"`.
+- Kept on purpose: `ro.product.*.device=lapis` and every build fingerprint (`ASUS/lapis/lapis:17/...`), so Play Integrity
+  and Google services keep seeing the build they know.
+
+Result: Settings > About and the device name show **ThinkPad X13 Gen 2i**, brand **LENOVO**.
+
+### 2. Fingerprint reader (new HAL)
+Google's crosfp HAL only drives Google's own fingerprint MCU, so the X13's Synaptics sensor had no driver at all.
+
+- `fingerprint/gbos_fp.c`: an `android.hardware.biometrics.fingerprint.IFingerprint/default` HAL (AIDL V4), written like
+  gbOS86's `soft_gk`: plain C, no NDK, linked against the image's own libraries. Enroll, authenticate, remove, enumerate,
+  challenges, lockout.
+- `fingerprint/syn.h`: the sensor protocol, a port of libfprint's Synaptics driver (LGPL-2.1) to usbfs. Templates are stored
+  and matched on the sensor itself.
+- `usb/gbos_fp`: the built binary. `usb/hook.sh` (patch) starts it only when a Synaptics sensor is on USB at boot; its
+  service declares the interface, so init drops crosfp's. `FINGERPRINT=0` turns it off.
+- Security: registered as a **WEAK** (Class 2) sensor: unlocks the lock screen and weak-biometric app prompts, never
+  Keystore keys (the match happens on a USB device the host cannot authenticate). Enrolling and clearing a lockout need a
+  fresh lock-screen password token from soft_gk. Only system_server (uid 1000) may call it. Lockout: 30 s after every 5
+  failures, permanent after 20, kept across reboots. Templates are named `GBOS-<install>-u<user>-<id>`: only the current
+  user's own are offered to the sensor or deleted, so Fedora's fingerprints (fprintd) on the same sensor stay untouched and
+  never unlock Android.
+- Tested on the real sensor from Linux (`fingerprint/syn_test cycle`): enroll 8/8, identify, delete.
+
+### 3. adb over a Thunderbolt cable
+These laptops have no USB device-mode controller, so adb over a USB cable cannot work (the official "coming soon"); Google's
+image has no USB gadget setup either.
+
+- `usb/kmod/thunderbolt_net.ko`: `CONFIG_USB4_NET`, which gbOS86's kernel leaves out, built for the shipped kernel by
+  `kernel/isa_emu_patch/build_extra_module.sh`: the kernel's own config (from the IKCONFIG in `BOOTX64.EFI`), symbol CRCs
+  recovered from the released module tree (`kernel/symvers_from_modules.py`), the same AOSP clang. Not signed (gbOS86's
+  kernel does not enforce signatures).
+- `usb/tbnet.sh`: gives `thunderbolt0` 10.42.0.2/24 and the routing rules Android leaves out. adb is not turned on by it and
+  still asks to authorise the computer. `TB_NET=0` turns it off, `TB_NET_IP` changes the address.
+- Use: on the other computer `nmcli con add type ethernet ifname thunderbolt0 ipv4.method manual ipv4.addresses
+  10.42.0.1/24`, then `adb connect 10.42.0.2:<port>` (Wireless debugging's port, or 5555 after `adb tcpip 5555`).
+- Wireless debugging and a USB Ethernet adapter (r8152, ax88179, cdc_ether in gbOS86's kernel) work too.
+
+### 4. Build and test helpers
+- `tools/test_gbos_fp.sh`: soft_gk's token key and the sensor id list agree across files, hook.sh starts the HAL only with a
+  sensor; `SENSOR=1` also probes the real sensor through docker.
+- `tools/test_tbnet.sh`: the module's vermagic, all imported symbol CRCs and its kCFI hashes match the shipped kernel; the
+  hook block adds the service only when the module loads.
+- `tools/test_device_model.sh` (patch): the identity rewrite in all seven partitions, with a non-ASUS name.
+- The patch also adds `gbos_fp` and `tbnet.sh` to gbos-x86's image and deploy scripts and documents the options in its
+  `gbos.cfg` and README.
 
 ## Use
 
@@ -19,9 +70,15 @@ The patch also adds `gbos_fp` and `tbnet.sh` to gbos-x86's image and deploy scri
 git clone https://github.com/linuxkid473/gbos-x86
 ./apply.sh ../gbos-x86
 cd ../gbos-x86 && sh tools/test_gbos_fp.sh && sh tools/test_tbnet.sh && sh tools/test_device_model.sh
-./build.sh --looper --data-size 100
+./build.sh --looper --data-size 100      # 128 GB drive; flash dist/gbOS86-looper-*.img with dd
 ```
 
-After a newer gbos-x86: apply again on a fresh checkout. If `test_tbnet.sh` fails on vermagic or CRCs, upstream shipped a new
-kernel: rebuild the module (`kernel/isa_emu_patch/build_extra_module.sh USB4_NET drivers/net/thunderbolt thunderbolt_net`,
-see its header) and the fingerprint HAL if needed (`fingerprint/build.sh`).
+## After a newer gbos-x86
+Apply on a fresh checkout (`apply.sh` uses `git apply --3way`, so conflicts show as markers). If `test_tbnet.sh` fails on
+vermagic or CRCs, upstream shipped a new kernel: rebuild the module in gbos-x86's build container
+(`kernel/fetch_kernel_sources.sh`, then `build_extra_module.sh USB4_NET drivers/net/thunderbolt thunderbolt_net`, see its
+header). `gbos_fp` only uses stable NDK interfaces and normally survives; rebuild it with `fingerprint/build.sh` if needed.
+
+## Not verified yet
+Booted only from Linux tests so far: the Android side (HAL registration, Settings enrollment, lock-screen unlock, the
+Thunderbolt link and routing) still has to be checked on the laptop. Logs: `gbos/logs/boot-N/` on the GBOSSYS partition.
