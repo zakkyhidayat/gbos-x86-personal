@@ -39,7 +39,15 @@ Google's crosfp HAL only drives Google's own fingerprint MCU, so the X13's Synap
   failures, permanent after 20, kept across reboots. Templates are named `GBOS-<install>-u<user>-<id>`: only the current
   user's own are offered to the sensor or deleted, so Fedora's fingerprints (fprintd) on the same sensor stay untouched and
   never unlock Android.
-- Tested on the real sensor from Linux (`fingerprint/syn_test cycle`): enroll 8/8, identify, delete.
+- Robust against what Android's Settings does to the sensor: its "touch the sensor" screen starts an enroll and cancels it
+  at the first touch. A cancel the sensor does not take at once is retried (as libfprint does), a sensor that stops
+  answering is reset on the next open, an I/O error during a requested cancel is reported as CANCELED, and the sensor's
+  "busy" (102) and "finger still resting" (213) answers are retried instead of failing the setup.
+- Accuracy is the sensor's own: matching runs in its firmware, and the HAL does not lower any threshold. A touch that adds
+  nothing new to the template shows as "not recognised" during setup; lift and shift the finger slightly between touches.
+- Debug: `logcat -s gbos_fp` shows each sensor message ID and result code (no fingerprint data).
+- `fingerprint/syn_test` (from Linux, through docker): `probe`, `cycle` (enroll a throw-away template, identify, delete),
+  `cancel` and `suw` (replay Settings' cancel-then-enroll flow).
 
 ### 3. adb over a Thunderbolt cable
 These laptops have no USB device-mode controller, so adb over a USB cable cannot work (the official "coming soon"); Google's
@@ -79,6 +87,17 @@ vermagic or CRCs, upstream shipped a new kernel: rebuild the module in gbos-x86'
 (`kernel/fetch_kernel_sources.sh`, then `build_extra_module.sh USB4_NET drivers/net/thunderbolt thunderbolt_net`, see its
 header). `gbos_fp` only uses stable NDK interfaces and normally survives; rebuild it with `fingerprint/build.sh` if needed.
 
-## Not verified yet
-Booted only from Linux tests so far: the Android side (HAL registration, Settings enrollment, lock-screen unlock, the
-Thunderbolt link and routing) still has to be checked on the laptop. Logs: `gbos/logs/boot-N/` on the GBOSSYS partition.
+## Status on the laptop
+Booted from a 128 GB external SSD (Lexar E6, looper image, kernel #42); the drive can later move to the internal slot,
+since the partitions are found by label.
+
+| | |
+|---|---|
+| Boot on kernel #42 (#37 panicked on Tiger Lake) | works |
+| Settings > About: ThinkPad X13 Gen 2i, LENOVO | works |
+| Fingerprint HAL registered, enrollment in Settings | works (3 fingers enrolled) |
+| `thunderbolt_net` loads | works |
+| Lock-screen unlock with a fingerprint | not checked yet |
+| adb over a Thunderbolt cable (link, routing) | not checked yet |
+
+Logs: `gbos/logs/boot-N/` on the GBOSSYS partition.
