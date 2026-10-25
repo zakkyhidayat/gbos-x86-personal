@@ -77,7 +77,6 @@ sh ~/Documents/gbos-x86/tools/launcher/install_launcher.sh
 ```
 It installs the icon in this repo (`tools/launcher/googlebook-vm.png`: a flat laptop with the
 [Aluminium OS wallpaper](https://4kwallpapers.com/images/wallpapers/aluminium-os-stock-3636x3636-26364.jpeg) on its screen).
-To draw a new one with another image on the screen: `install_launcher.sh /path/to/wallpaper.jpg` (uses `make_icon.py`).
 Installed files: `~/.local/share/applications/googlebook-vm.desktop` and `~/.local/share/googlebook-vm/googlebook-vm.png`.
 
 ## Repo layout
@@ -93,7 +92,7 @@ Installed files: `~/.local/share/applications/googlebook-vm.desktop` and `~/.loc
 | `tools/install_internal.sh` | Dual boot beside Fedora (dry run by default) |
 | `tools/run_vm.sh` | Googlebook VM snapshot |
 | `tools/grub/` | `make_theme.py` (the googlebook-m3 theme), `googlebook-m3/` (generated), `install_grub.sh` |
-| `tools/launcher/` | `install_launcher.sh` (the "Googlebook VM" app launcher), its icon `googlebook-vm.png`, `make_icon.py` (draws a new icon) |
+| `tools/launcher/` | `install_launcher.sh` (the "Googlebook VM" app launcher) and its icon `googlebook-vm.png` |
 | `vm-gpu/` | GPU-accelerated VM work: pinned Mesa/NDK, `fetch.sh`, `build_venus.sh`, `test_boot.sh` (`GPU=cpu` for the normal VM) |
 | `tools/test_*.sh` | Checks: fingerprint wiring, Thunderbolt module, identity rewrite, quiet/fast boot |
 
