@@ -119,7 +119,7 @@ Then [docs/install-internal.md](docs/install-internal.md) to put it beside Fedor
 | Internal dual boot beside Fedora | works (first boot: setup, 3 fingers enrolled) |
 | GRUB menu with the Material 3 theme | installed (`grub.cfg` has the entry and theme); first boot with it not seen yet |
 | Firmware entries: Fedora, Googlebook (SSD's removed) | done |
-| Build fingerprint stays ASUS | fixed in `hook.sh` (was LENOVO); next boot not checked yet ([docs/identity.md](docs/identity.md#build-fingerprint)) |
+| Build fingerprint stays ASUS | fixed in `hook.sh` (was LENOVO); confirmed in a VM boot of the internal install's files: Android reports `ASUS/lapis/...` ([docs/identity.md](docs/identity.md#build-fingerprint)) |
 
 ## Credits and licences
 - [linuxkid473/gbos-x86](https://github.com/linuxkid473/gbos-x86) (gbOS86): everything this builds on.

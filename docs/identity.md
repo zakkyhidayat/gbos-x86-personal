@@ -33,6 +33,8 @@ which Google does not know (the device could show as uncertified). Now, when `DE
 ```
 ro.build.fingerprint=ASUS/lapis/lapis:17/CL3B.260622.271.R1/16452207:user/release-keys
 ```
-Checked by running the block on lapis's real `build.prop` files; the boot log shows
-`hook: identity: ro.build.fingerprint=ASUS/...`. `tools/test_device_model.sh` covers it, and that nothing is added when a
+Checked by running the block on lapis's real `build.prop` files, then in a QEMU boot of a copy of the internal install with
+`DEBUG_LOGS=1`: the boot log shows `hook: identity: ro.build.fingerprint=ASUS/...`, and Android itself reports
+`Build fingerprint: 'ASUS/lapis/lapis:17/CL3B.260622.271.R1/16452207:user/release-keys'` (no LENOVO fingerprint anywhere),
+while the brand stays LENOVO. `tools/test_device_model.sh` covers it, and that nothing is added when a
 partition already sets it or the brand is unchanged.
