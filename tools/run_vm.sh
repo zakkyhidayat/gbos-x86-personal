@@ -32,7 +32,9 @@ die() { echo "run_vm: $*" >&2; [ -t 2 ] || notify-send -i dialog-error "Googlebo
 ROOTDISK=/dev/$(lsblk -no PKNAME "$(findmnt -no SOURCE / | sed 's/\[.*//')" 2>/dev/null)
 label_on() { lsblk -rno PATH,LABEL "$2" 2>/dev/null | awk -v l="$1" '$2 == l { print $1 }'; }   # label_on LABEL disk
 external() { lsblk -rno PATH,LABEL | awk '$2 == "GBOSSYS" { print $1 }' | while read p; do
-  d=/dev/$(lsblk -no PKNAME "$p"); [ "$d" != "$ROOTDISK" ] && echo "$d"; done; }
+  d=/dev/$(lsblk -no PKNAME "$p")
+  case "$d" in /dev/loop*) continue;; esac   # an attached image file (e.g. the built looper image) is not a drive
+  [ "$d" != "$ROOTDISK" ] && echo "$d"; done; }
 unmount_all() { for p in "$@"; do
   if findmnt -rn -S "$p" >/dev/null; then udisksctl unmount -b "$p" >/dev/null 2>&1 || die "$p is mounted and could not be unmounted"; fi
 done; }
