@@ -20,6 +20,11 @@ endian = 'little'
 needs_exe_wrapper = true
 INI
 cd /cache/mesa-$MESA_VERSION
+# optional guest-gralloc patch (vm-gpu/fetch.sh fetches it into the cache); applied once
+P=/cache/mesa-android-mapper5.patch
+if [ -f $P ]; then
+  if git apply --check -R $P 2>/dev/null; then echo "mapper5 patch already applied"; else git apply $P && echo "mapper5 patch applied"; fi
+fi
 rm -rf $B/b
 meson setup $B/b -Dallow-fallback-for=libdrm -Dlibdrm:intel=disabled -Dlibdrm:radeon=disabled -Dlibdrm:amdgpu=disabled -Dlibdrm:nouveau=disabled -Dlibdrm:vmwgfx=disabled -Dlibdrm:freedreno=disabled -Dlibdrm:etnaviv=disabled -Dlibdrm:exynos=disabled -Dlibdrm:omap=disabled -Dlibdrm:tegra=disabled -Dlibdrm:vc4=disabled -Dlibdrm:cairo-tests=disabled -Dlibdrm:valgrind=disabled -Dlibdrm:tests=false --cross-file $B/android-x86_64.ini --buildtype=release -Dstrip=true \
   -Dplatforms=android -Dplatform-sdk-version=$ANDROID_API -Dandroid-stub=true -Dandroid-libbacktrace=disabled \

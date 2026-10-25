@@ -13,6 +13,7 @@ Host: Fedora has virglrenderer 1.3 (Venus) and QEMU 11.1 (`virtio-vga-gl,venus=o
 | `versions.sh` | Pinned Mesa 26.2.5 (matches Fedora's) and Android NDK r30, hashes from independent sources |
 | `fetch.sh` | Downloads into `~/.cache/gbos-vm-gpu` and verifies the hashes |
 | `Dockerfile` | Build tools only (meson, ninja, glslang...); the compiler is the NDK |
+| `test_boot.sh` | One test round: throwaway disk from the internal install + Venus driver + QEMU headless, prints a short error summary (`sh vm-gpu/test_boot.sh [seconds]`, `KEEP=1` keeps logs and screenshot) |
 | `build_venus.sh`, `container_build.sh` | Cross-build Mesa's Venus ICD for Android x86_64 -> `vm-gpu/out/libvulkan_virtio.so` (not tracked) |
 
 ## Phases (each ends with a check; stop at the first that fails)
@@ -35,5 +36,10 @@ Status: **phases 1-2 done, phase 3-4 blocked on buffer sharing.**
 - Way forward (not done): make minigbm allocate blob resources (its virtio-gpu cross-domain path), which is Google's prebuilt
   binary, or take chaitan3/gbos-vm-linux's route (VirGL GL for SurfaceFlinger + Venus for apps, with its Mesa gralloc patch).
   Either is a patch-the-guest-graphics-stack project, not a driver swap.
+- Tried: chaitan3's `mesa-android-mapper5.patch` (u_gralloc reads buffer info through IMapper 5; fetched by `fetch.sh`, hash-pinned, applied
+  by `container_build.sh`). Same result: `invalid res_id`, SurfaceFlinger `vkCreateDevice` fails, "Display output is not active".
+  So the problem is not Mesa's buffer-info lookup but that minigbm's buffers are not blob resources the host can import.
+- Next experiment (not done): find out how minigbm allocates here (logcat of the gralloc HAL, `virtgpu` ioctls) and whether it can be
+  told to use blob resources; or test chaitan3's VirGL-for-SurfaceFlinger split.
 The `venus` choice in `hook.sh` stays: it only triggers with a virgl-capable virtio GPU and `gbos/patched/vulkan.venus.so`, which
 is not shipped, so nothing changes until the buffer problem is solved.

@@ -13,6 +13,7 @@ get() {  # get FILE URL ALGO HASH
 }
 get mesa-$MESA_VERSION.tar.xz "$MESA_URL" sha256 "$MESA_SHA256"
 get android-ndk-$NDK_VERSION-linux.zip "$NDK_URL" sha1 "$NDK_SHA1"
+get mesa-android-mapper5.patch "$MAPPER5_URL" sha256 "$MAPPER5_SHA256"
 [ "$(stat -c %s android-ndk-$NDK_VERSION-linux.zip)" = "$NDK_SIZE" ] || { echo "NDK size differs from the manifest"; exit 1; }
 
 [ -d mesa-$MESA_VERSION ] || { echo "unpacking Mesa"; tar xf mesa-$MESA_VERSION.tar.xz; }

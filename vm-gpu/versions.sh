@@ -19,3 +19,8 @@ ANDROID_API=34
 
 # Downloads and build trees (outside the repo: ~3 GB)
 CACHE=${GBOS_GPU_CACHE:-$HOME/.cache/gbos-vm-gpu}
+
+# chaitan3/gbos-vm-linux's patch (no licence: fetched, not copied into this repo): Mesa's u_gralloc reads buffer info through
+# Android 17's IMapper 5, which minigbm implements. Pinned by hash; applies to 26.2.4 and 26.2.5.
+MAPPER5_URL=https://raw.githubusercontent.com/chaitan3/gbos-vm-linux/HEAD/patches/mesa-android-mapper5.patch
+MAPPER5_SHA256=fd2f833e9eba194437da97aece174dd864beacb1afe1fb1ea40c5bf09d18106b
