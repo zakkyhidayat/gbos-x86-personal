@@ -43,7 +43,7 @@ vt.global_cursor_default=0 console=ttynull` (see [docs/boot.md](docs/boot.md)).
 | Task | How |
 |---|---|
 | Boot Googlebook | Pick *Googlebook* in the GRUB menu (or **F12** → *Googlebook*) |
-| Test an app in a VM (from Fedora) | `sh ~/Documents/gbos-x86/tools/run_vm.sh`, then `adb connect 127.0.0.1:5556` |
+| Test an app in a VM (from Fedora) | App menu → **Googlebook VM** (or `sh ~/Documents/gbos-x86/tools/run_vm.sh`), then `adb connect 127.0.0.1:5556` |
 | adb over Wi-Fi | USB debugging on in Developer options, then `adb connect <googlebook-ip>:5555` |
 | Change a boot option | `gbos/gbos.cfg` on the GBOSSYS partition ([below](#boot-options-gboscfg)) |
 | Boot logs | `gbos/logs/boot-N/` on GBOSSYS (`kmsg.log`, `crash.txt`, `hw.txt`, `hwdetect.txt`) |
@@ -116,6 +116,7 @@ Then [docs/install-internal.md](docs/install-internal.md) to put it beside Fedor
 | `thunderbolt_net` loads; adb over a Thunderbolt cable | loads; cable not checked |
 | Googlebook VM: external SSD, colours, mouse | works |
 | Googlebook VM: internal install (`--internal`) | ran on the real partitions, exited cleanly |
+| "Googlebook VM" app launcher (no terminal: one polkit prompt, then the VM) | works |
 | Internal dual boot beside Fedora | works (first boot: setup, 3 fingers enrolled) |
 | GRUB menu with the Material 3 theme | installed (`grub.cfg` has the entry and theme); first boot with it not seen yet |
 | Firmware entries: Fedora, Googlebook (SSD's removed) | done |
