@@ -25,7 +25,7 @@ OVMF_CODE=${OVMF_CODE:-/usr/share/edk2/ovmf/OVMF_CODE.fd} OVMF_VARS=${OVMF_VARS:
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 KERNEL=$HERE/usb/out/BOOTX64.EFI
 OPTS='quiet loglevel=1 printk.ignore_loglevel=0 vt.global_cursor_default=0 console=ttynull'
-die() { echo "run_vm: $*" >&2; exit 1; }
+die() { echo "run_vm: $*" >&2; [ -t 2 ] || notify-send -i dialog-error "Googlebook VM" "$*" 2>/dev/null; exit 1; }
 [ -w /dev/kvm ] || die "/dev/kvm is not usable by $(id -un)"
 [ -f "$OVMF_CODE" ] || die "OVMF not found ($OVMF_CODE): install edk2-ovmf"
 
@@ -62,14 +62,27 @@ case "$MODE" in
   *) die "unknown option $MODE";;
 esac
 for d in $DRIVES; do [ -b "$d" ] && [ ! -r "$d" ] && ACL="$ACL $d"; done
-if [ -n "$ACL" ]; then
+T=$(mktemp -d /var/tmp/gbos-vm.XXXXXX)
+HELPER=
+if [ -n "$ACL" ] && [ -t 0 ]; then
   echo "sudo: giving $(id -un) read access to$ACL until the VM exits"
   for d in $ACL; do sudo setfacl -m "u:$(id -un):r" "$d"; done
+elif [ -n "$ACL" ]; then
+  # No terminal (started from the app launcher): one polkit prompt (GNOME's dialog, fingerprint or password). A root helper
+  # grants read access, waits for QEMU to exit, then takes the access back, so there is no second prompt at the end.
+  pkexec sh -c 'u=$1 t=$2; shift 2; for d; do setfacl -m "u:$u:r" "$d"; done; : > "$t/acl.ok"
+    until [ -f "$t/qemu.pid" ] || [ ! -d "$t" ]; do sleep 1; done
+    while kill -0 "$(cat "$t/qemu.pid" 2>/dev/null)" 2>/dev/null; do sleep 2; done
+    for d; do setfacl -x "u:$u" "$d"; done' _ "$(id -un)" "$T" $ACL &
+  HELPER=1; i=0
+  until [ -f "$T/acl.ok" ]; do
+    sleep 1; i=$((i + 1))
+    { [ $i -lt 120 ] && kill -0 $! 2>/dev/null; } || { rm -rf "$T"; die "authorization refused or timed out"; }
+  done
 fi
-
-T=$(mktemp -d /var/tmp/gbos-vm.XXXXXX)
 cleanup() {
   rm -rf "$T"
+  [ -n "$HELPER" ] && return 0   # the root helper removes the access itself once QEMU has exited
   for d in $ACL; do sudo setfacl -x "u:$(id -un)" "$d" 2>/dev/null; done
   [ -z "$ACL" ] || echo "read access to$ACL removed"
 }
@@ -89,4 +102,6 @@ echo "starting the VM (writes go to $T, deleted on exit); adb: adb connect 127.0
 qemu-system-x86_64 -name gbOS86-snapshot -machine q35,accel=kvm -cpu host -m "$MEM" -smp "$CPUS" \
   -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" -drive if=pflash,format=raw,file="$T/vars.fd" "$@" \
   -device e1000e,netdev=n0 -netdev user,id=n0,hostfwd=tcp:127.0.0.1:5556-:5555 \
-  -device qemu-xhci -device usb-mouse -device usb-kbd -device virtio-vga -display "${VM_DISPLAY:-sdl}" $VM_EXTRA
+  -device qemu-xhci -device usb-mouse -device usb-kbd -device virtio-vga -display "${VM_DISPLAY:-sdl}" $VM_EXTRA &
+echo $! > "$T/qemu.pid"
+wait $! || die "QEMU exited with an error"
