@@ -17,7 +17,8 @@ Base: upstream `729b9c3` (kernel #42 `6.18.21-gbos-whl`, module tree r5, release
 | **Boot menu** | Fedora's GRUB as a Material 3 menu for Fedora and Googlebook | [docs/grub.md](docs/grub.md) |
 | **Quiet, fast boot** | 67.6 s → 29.2 s to `boot_completed`; no kernel text from power-on to the Googlebook animation, none at shutdown | [docs/boot.md](docs/boot.md) |
 | **Dual boot beside Fedora** | Googlebook on the internal NVMe next to Fedora, own boot entry | [docs/install-internal.md](docs/install-internal.md) |
-| **Googlebook VM** | The installed Googlebook in a QEMU/KVM window from Fedora, as a throwaway snapshot, for testing apps | [docs/vm.md](docs/vm.md) |
+| **Googlebook VM** | The installed Googlebook in a QEMU/KVM window from Fedora, as a throwaway snapshot, for testing apps; app-menu launcher, screen kept on, CPU drawing | [docs/vm.md](docs/vm.md) |
+| **GPU-accelerated VM** (work in progress) | Venus driver built and loading; drawing blocked by buffer sharing, so the VM stays CPU-drawn | [vm-gpu/README.md](vm-gpu/README.md) |
 | **adb** | Over Wi-Fi, a Thunderbolt cable or the VM (USB-cable debugging: see notes) | [docs/adb.md](docs/adb.md) |
 | **Extra kernel modules** | `thunderbolt_net`, `virtio-gpu`, `virtio_dma_buf` built for the shipped kernel without rebuilding it | [docs/kernel-modules.md](docs/kernel-modules.md) |
 
@@ -93,6 +94,7 @@ someone else's image): it defaults to `~/Downloads/aluminium-os-stock-3636x3636-
 | `tools/run_vm.sh` | Googlebook VM snapshot |
 | `tools/grub/` | `make_theme.py` (the googlebook-m3 theme), `googlebook-m3/` (generated), `install_grub.sh` |
 | `tools/launcher/` | `install_launcher.sh` (the "Googlebook VM" app launcher) and `make_icon.py` (its laptop icon) |
+| `vm-gpu/` | GPU-accelerated VM work: pinned Mesa/NDK, `fetch.sh`, `build_venus.sh`, `test_boot.sh` (`GPU=cpu` for the normal VM) |
 | `tools/test_*.sh` | Checks: fingerprint wiring, Thunderbolt module, identity rewrite, quiet/fast boot |
 
 ## Build from scratch
@@ -127,6 +129,8 @@ Then [docs/install-internal.md](docs/install-internal.md) to put it beside Fedor
 | Two crash loops stopped (`timberslide`, `suspend_diagnostics`) | in place, not re-measured |
 | `thunderbolt_net` loads; adb over a Thunderbolt cable | loads; cable not checked |
 | Googlebook VM: external SSD, colours, mouse | works |
+| Googlebook VM: screen stays on (no more "Display output is not active" after idling) | works (UI still shown after 4 min idle) |
+| Googlebook VM with GPU drawing (Venus) | driver loads and reaches the host GPU; screen buffers cannot be shared yet |
 | Googlebook VM: internal install (`--internal`) | ran on the real partitions, exited cleanly |
 | "Googlebook VM" app launcher (no terminal: one polkit prompt, then the VM) | works |
 | Internal dual boot beside Fedora | works (first boot: setup, 3 fingers enrolled) |
