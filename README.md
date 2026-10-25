@@ -102,17 +102,69 @@ Installed files: `~/.local/share/applications/googlebook-vm.desktop` and `~/.loc
 | `vm-gpu/` | GPU-accelerated VM work: pinned Mesa/NDK, `fetch.sh`, `build_venus.sh`, `test_boot.sh` (`GPU=cpu` for the normal VM) |
 | `tools/test_*.sh` | Checks: fingerprint wiring, Thunderbolt module, identity rewrite, quiet/fast boot |
 
-## Build from scratch
+## Installation guide
+From a fresh start to Googlebook beside Fedora on a ThinkPad X13 Gen 2i, the way this laptop was set up. Every step that
+writes to a disk or the firmware asks first; the scripts default to a dry run.
 
+### 0. What you need
+- **Fedora** on the internal NVMe, `/` on btrfs as the disk's last partition, at least ~72 GiB free (Googlebook gets 72 GiB;
+  Fedora must keep 20 GiB free after the shrink). **Back up Fedora first.**
+- **Secure Boot off** (BIOS Setup → Security): the gbOS86 kernel is not signed.
+- An **external drive of 64 GB or more** (USB or Thunderbolt SSD) for the first install; it becomes the copy source and a
+  backup. Everything on it is erased when it is flashed.
+- On Fedora: `git`, `docker` (gbos-x86's builds run in containers), `qemu-system-x86` + `edk2-ovmf` (only for the VM),
+  `grub2-tools` (already there); `python3-pillow` only to regenerate the GRUB theme.
+
+### 1. Get the sources and apply this repo
 ```sh
-# from this repo's folder; gbos-x86 goes next to it
-git clone https://github.com/linuxkid473/gbos-x86 ../gbos-x86 && git -C ../gbos-x86 checkout 729b9c3
-./apply.sh ../gbos-x86
-cd ../gbos-x86
+git clone https://github.com/zakkyhidayat/gbos-x86-personal ~/Documents/gbos-x13g2   # this repo (private)
+git clone https://github.com/linuxkid473/gbos-x86 ~/Documents/gbos-x86
+git -C ~/Documents/gbos-x86 checkout 729b9c3                                          # the base this repo is made for
+sh ~/Documents/gbos-x13g2/apply.sh ~/Documents/gbos-x86
+cd ~/Documents/gbos-x86
 sh tools/test_gbos_fp.sh && sh tools/test_tbnet.sh && sh tools/test_device_model.sh && sh tools/test_boot_quiet.sh
-./build.sh --looper --data-size 100      # an image for an external drive; flash dist/gbOS86-looper-*.img with dd
 ```
-Then [docs/install-internal.md](docs/install-internal.md) to put it beside Fedora.
+All four tests must pass. If `test_tbnet.sh` fails on vermagic or CRCs, upstream's kernel differs: see
+[docs/kernel-modules.md](docs/kernel-modules.md#rebuilding-for-a-new-kernel).
+
+### 2. Build the image and flash the external drive
+```sh
+./build.sh --looper --data-size 32                  # dist/gbOS86-looper-*.img, ~41 GB (downloads Google's image on the first run)
+lsblk -o NAME,SIZE,MODEL,TRAN                       # find the external drive, e.g. /dev/sda (NOT nvme0n1)
+sudo dd if=dist/gbOS86-looper-*.img of=/dev/sdX bs=4M status=progress conv=fsync
+```
+Double-check the device name: `dd` overwrites it completely. The data size only matters for running from the external drive;
+the internal install starts with its own empty `/data`. Optional: boot it once (F12 → the USB drive) to see Googlebook
+run before touching the internal disk.
+
+### 3. Install beside Fedora
+With the external drive plugged in (it is only read):
+```sh
+sh tools/install_internal.sh          # dry run: shows the layout computed from your disk and every command
+sh tools/install_internal.sh --run    # asks before each step: y continues, anything else stops
+```
+It shrinks Fedora's btrfs and partition, adds GBOSSYS / GBOS_META / GBOS_DATA, copies the system from the external drive
+(compared file by file), puts the kernel in `EFI/gbos/` on Fedora's EFI partition and adds the "Googlebook (internal)"
+firmware entry with the quiet options. Details and recovery: [docs/install-internal.md](docs/install-internal.md).
+
+### 4. First boot
+1. **Unplug the external drive** (both disks carry the same labels).
+2. Restart, **F12** → *Googlebook (internal)*.
+3. Googlebook's setup runs (fresh `/data`): sign in, set a lock-screen PIN or password (needed for the fingerprint), then
+   Settings → Security → Fingerprint. During enrollment, lift and move the finger slightly between touches.
+4. Settings → About should show **ThinkPad X13 Gen 2i / LENOVO**.
+
+### 5. Optional extras
+| What | Command | Docs |
+|---|---|---|
+| Material 3 GRUB menu with Fedora and Googlebook; removes the external drive's entry and renames the internal one "Googlebook" | `sh tools/grub/install_grub.sh` then `--run` | [docs/grub.md](docs/grub.md) |
+| "Googlebook VM" app launcher (test apps from Fedora) | `sh tools/launcher/install_launcher.sh` | [docs/vm.md](docs/vm.md) |
+| adb over Wi-Fi | Developer options → USB debugging, then `adb connect <ip>:5555` | [docs/adb.md](docs/adb.md) |
+
+### Undo
+- GRUB menu: [docs/grub.md](docs/grub.md#undo).
+- Googlebook on the internal disk: [docs/install-internal.md](docs/install-internal.md#removing-it) (deletes its data and
+  gives the space back to Fedora).
 
 ## After a newer gbos-x86
 1. Apply on a fresh checkout. `apply.sh` uses `git apply --3way`, so conflicts show as markers instead of failing silently.
