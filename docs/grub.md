@@ -23,7 +23,7 @@ countdown. The same test chainloaded the real `BOOTX64.EFI` with the options bel
 `ttynull`): the kernel was quiet and stage0's output went to the serial port, so GRUB passes the options through.
 
 ## `tools/grub/install_grub.sh`
-Dry run by default; `--run` asks before each step.
+Dry run by default; `--run` asks before each step (`y` continues, anything else stops).
 
 | Step | What |
 |---|---|

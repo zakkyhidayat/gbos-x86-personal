@@ -20,7 +20,7 @@ No separate EFI partition for gbOS86: its kernel sits in its own folder on Fedor
 ## `tools/install_internal.sh`
 ```sh
 sh tools/install_internal.sh          # dry run: computes the layout from the disk, prints every command, changes nothing
-sh tools/install_internal.sh --run    # does it, asking "yes" before each step (sudo for the disk steps)
+sh tools/install_internal.sh --run    # does it, asking before each step: y continues, anything else stops (sudo for disk steps)
 SIZE_GIB=72 ...                       # the space for gbOS86 (default 72)
 ```
 

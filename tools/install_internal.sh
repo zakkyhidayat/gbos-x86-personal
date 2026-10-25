@@ -19,7 +19,7 @@ die() { echo "install_internal: $*" >&2; exit 1; }
 step() {  # step "what" command...   dry run: print; --run: ask, then run
   echo; echo "== $1"; shift; echo "   \$ $*"
   [ -n "$RUN" ] || return 0
-  printf '   run this step? [yes/no] '; read a; [ "$a" = yes ] || die "stopped before: $*"
+  printf '   run this step? [y/n] '; read a; case "$a" in y|Y|yes) ;; *) false;; esac || die "stopped before: $*"
   "$@"
 }
 
@@ -84,7 +84,7 @@ EOF
 [ -n "$RUN" ] || echo "(dry run: nothing is changed; --run to do it)"
 if [ -n "$RUN" ]; then
   echo; echo "Shrinking a filesystem that is in use is normally safe on btrfs, but an interruption (power loss) could lose data."
-  printf 'Is your Fedora data backed up elsewhere? [yes/no] '; read a; [ "$a" = yes ] || die "back up first"
+  printf 'Is your Fedora data backed up elsewhere? [y/n] '; read a; case "$a" in y|Y|yes) ;; *) false;; esac || die "back up first"
 fi
 
 if [ -n "$RESUME" ]; then echo; echo "== 1-3/7 already done (Fedora shrunk, partitions ${PP}$N1-$N3 in place): continuing at 4/7"; else

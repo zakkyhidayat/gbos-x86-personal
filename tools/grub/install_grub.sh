@@ -20,7 +20,7 @@ die() { echo "install_grub: $*" >&2; exit 1; }
 step() {
   echo; echo "== $1"; shift; echo "   \$ $*"
   [ -n "$RUN" ] || return 0
-  printf '   run this step? [yes/no] '; read a; [ "$a" = yes ] || die "stopped before: $*"
+  printf '   run this step? [y/n] '; read a; case "$a" in y|Y|yes) ;; *) false;; esac || die "stopped before: $*"
   "$@"
 }
 
@@ -67,7 +67,7 @@ step "2/6 the Googlebook menu entry (/etc/grub.d/25_googlebook)" \
   sh -c "printf '%s\n' \"\$1\" | sudo tee /etc/grub.d/25_googlebook >/dev/null && sudo chmod 755 /etc/grub.d/25_googlebook && sudo cat /etc/grub.d/25_googlebook | sed -n '/menuentry/,/^}/p'" _ "$ENTRY"
 if [ -n "$RUN" ]; then
   echo; echo "== 3/6 /etc/default/grub: GRUB_TERMINAL_OUTPUT=gfxterm, GRUB_GFXMODE=1920x1200,auto, GRUB_THEME=$DEST/theme.txt"
-  printf '   run this step? [yes/no] '; read a; [ "$a" = yes ] || die "stopped at step 3"
+  printf '   run this step? [y/n] '; read a; case "$a" in y|Y|yes) ;; *) false;; esac || die "stopped at step 3"
   sudo test -f /etc/default/grub.before-googlebook-m3 || sudo cp -p /etc/default/grub /etc/default/grub.before-googlebook-m3
   set_key GRUB_TERMINAL_OUTPUT gfxterm; set_key GRUB_GFXMODE 1920x1200,auto; set_key GRUB_THEME "$DEST/theme.txt"
   grep -E '^GRUB_(TERMINAL_OUTPUT|GFXMODE|THEME|TIMEOUT)=' /etc/default/grub | sed 's/^/   /'
