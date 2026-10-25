@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the "googlebook-m3" GRUB theme: Material 3 (dark, blue scheme) with M3 Expressive shapes, for a 1920x1200 panel.
+"""Generate the "googlebook-m3" GRUB theme (icons from logos/: Fedora as is, Google's G white on Google blue): Material 3 (dark, blue scheme) with M3 Expressive shapes, for a 1920x1200 panel.
 
   python3 tools/grub/make_theme.py [OUTDIR]        (default tools/grub/googlebook-m3)
 
@@ -103,28 +103,42 @@ def row_slices(color, r=SEL_R, w=400, h=ROW_H):
     return {k: p.crop(b) for k, b in boxes.items()}
 
 
+LOGOS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logos")
+GOOGLE_BLUE = "#1A73E8"
+
+
+def svg(name, size):
+    """Rasterize logos/<name>.svg (rsvg-convert) at size x size, keeping its own outline."""
+    png = subprocess.run(["rsvg-convert", "-w", str(size), "-h", str(size), "-a", os.path.join(LOGOS, name + ".svg")],
+                         check=True, capture_output=True).stdout
+    import io
+    return Image.open(io.BytesIO(png)).convert("RGBA")
+
+
 def icon(kind):
     s = ICON * SS
+    if kind == "fedora":  # the Fedora logo as it is: blue speech bubble (square bottom-left corner), white "f"
+        return svg("fedora", s).resize((ICON, ICON), Image.LANCZOS)
     im = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    d.ellipse([(0, 0), (s - 1, s - 1)], fill=rgba(C["primary"]))
+    if kind == "googlebook":  # Google's "G" in solid white on a Google-blue circle
+        d.ellipse([(0, 0), (s - 1, s - 1)], fill=rgba(GOOGLE_BLUE))
+        g = svg("google_g", s)
+        g = g.crop(g.getbbox())
+        k = int(s * 0.52) / max(g.size)
+        g = g.resize((round(g.width * k), round(g.height * k)), Image.LANCZOS)
+        im.paste(Image.new("RGBA", g.size, (255, 255, 255, 255)), ((s - g.width) // 2, (s - g.height) // 2), g.split()[3])
+        return im.resize((ICON, ICON), Image.LANCZOS)
+    d.ellipse([(0, 0), (s - 1, s - 1)], fill=rgba(C["primary"]))  # settings gear
     g, lw = rgba(C["on_primary"]), int(2.6 * SS)
     u = s / 48
-    if kind == "googlebook":  # laptop
-        d.rounded_rectangle([(13 * u, 14 * u), (35 * u, 30 * u)], 2.5 * u, outline=g, width=lw)
-        d.rounded_rectangle([(9 * u, 32 * u), (39 * u, 35.5 * u)], 1.8 * u, fill=g)
-    elif kind == "fedora":  # terminal window
-        d.rounded_rectangle([(11 * u, 13 * u), (37 * u, 35 * u)], 3 * u, outline=g, width=lw)
-        d.line([(16 * u, 20 * u), (21 * u, 24 * u), (16 * u, 28 * u)], fill=g, width=lw, joint="curve")
-        d.line([(24 * u, 29 * u), (31 * u, 29 * u)], fill=g, width=lw)
-    else:  # settings gear
-        cx = cy = 24 * u
-        for i in range(8):
-            a = i * math.pi / 4
-            d.line([(cx + 8 * u * math.cos(a), cy + 8 * u * math.sin(a)), (cx + 13 * u * math.cos(a), cy + 13 * u * math.sin(a))],
-                   fill=g, width=int(4.2 * SS))
-        d.ellipse([(cx - 9.5 * u, cy - 9.5 * u), (cx + 9.5 * u, cy + 9.5 * u)], outline=g, width=lw)
-        d.ellipse([(cx - 3.5 * u, cy - 3.5 * u), (cx + 3.5 * u, cy + 3.5 * u)], fill=g)
+    cx = cy = 24 * u
+    for i in range(8):
+        a = i * math.pi / 4
+        d.line([(cx + 8 * u * math.cos(a), cy + 8 * u * math.sin(a)), (cx + 13 * u * math.cos(a), cy + 13 * u * math.sin(a))],
+               fill=g, width=int(4.2 * SS))
+    d.ellipse([(cx - 9.5 * u, cy - 9.5 * u), (cx + 9.5 * u, cy + 9.5 * u)], outline=g, width=lw)
+    d.ellipse([(cx - 3.5 * u, cy - 3.5 * u), (cx + 3.5 * u, cy + 3.5 * u)], fill=g)
     return im.resize((ICON, ICON), Image.LANCZOS)
 
 

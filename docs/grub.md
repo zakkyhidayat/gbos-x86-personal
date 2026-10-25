@@ -13,7 +13,12 @@ Made by `tools/grub/make_theme.py` (Pillow + `grub2-mkfont`) for the 1920x1200 p
 - M3 Expressive shapes in the background: a 12-lobe "cookie" (primary container) and an 8-lobe "flower" (tertiary container).
 - Adwaita Sans: the title, subtitle and key hints are drawn into the background at real weights; menu labels (26 px) and the
   countdown (18 px) use GRUB fonts made from the same font (Latin and arrows only, to keep them small).
-- Icons by GRUB class: `fedora` (Fedora's entries carry `grub_class fedora`), `googlebook`, `efi`.
+- Icons by GRUB class: `fedora` (Fedora's entries carry `grub_class fedora`): the Fedora logo as it is (blue speech bubble with
+  its square bottom-left corner, white "f"); `googlebook`: Google's "G" in solid white on a Google-blue (`#1A73E8`) circle;
+  `efi`: a drawn settings gear. The logos are in `tools/grub/logos/`, from Wikimedia Commons:
+  [Fedora icon (2021)](https://commons.wikimedia.org/wiki/File:Fedora_icon_(2021).svg) and
+  [Google "G" logo](https://commons.wikimedia.org/wiki/File:Google_%22G%22_logo.svg) (trademarks of their owners; used here
+  only as menu icons).
 
 GRUB draws a row's pixmap box *around* the row, padded by the corner images' size, so `item_height` is the visible row minus
 twice the corner radius, every row gets a transparent box of the same size, and `item_spacing` makes up the rest.
