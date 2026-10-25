@@ -110,8 +110,8 @@ writes to a disk or the firmware asks first; the scripts default to a dry run.
 - **Fedora** on the internal NVMe, `/` on btrfs as the disk's last partition, at least ~72 GiB free (Googlebook gets 72 GiB;
   Fedora must keep 20 GiB free after the shrink). **Back up Fedora first.**
 - **Secure Boot off** (BIOS Setup → Security): the gbOS86 kernel is not signed.
-- An **external drive of 64 GB or more** (USB or Thunderbolt SSD) for the first install; it becomes the copy source and a
-  backup. Everything on it is erased when it is flashed.
+- About **50 GB free in Fedora** for the build (the image is ~41 GB, sparse). No external drive is needed; one is only
+  useful to try Googlebook live from USB first (optional, step 2).
 - On Fedora: `git`, `docker` (gbos-x86's builds run in containers), `qemu-system-x86` + `edk2-ovmf` (only for the VM),
   `grub2-tools` (already there); `python3-pillow` only to regenerate the GRUB theme.
 
@@ -127,28 +127,30 @@ sh tools/test_gbos_fp.sh && sh tools/test_tbnet.sh && sh tools/test_device_model
 All four tests must pass. If `test_tbnet.sh` fails on vermagic or CRCs, upstream's kernel differs: see
 [docs/kernel-modules.md](docs/kernel-modules.md#rebuilding-for-a-new-kernel).
 
-### 2. Build the image and flash the external drive
+### 2. Build the image
 ```sh
-./build.sh --looper --data-size 32                  # dist/gbOS86-looper-*.img, ~41 GB (downloads Google's image on the first run)
-lsblk -o NAME,SIZE,MODEL,TRAN                       # find the external drive, e.g. /dev/sda (NOT nvme0n1)
+./build.sh --looper --data-size 32        # dist/gbOS86-looper-*.img, ~41 GB (downloads Google's image on the first run)
+```
+Optional, to try Googlebook live before touching the internal disk: flash it to a USB drive of 64 GB or more and boot it
+with F12 (`lsblk` to find the drive, e.g. `/dev/sda`, never `nvme0n1`; `dd` erases it completely):
+```sh
 sudo dd if=dist/gbOS86-looper-*.img of=/dev/sdX bs=4M status=progress conv=fsync
 ```
-Double-check the device name: `dd` overwrites it completely. The data size only matters for running from the external drive;
-the internal install starts with its own empty `/data`. Optional: boot it once (F12 → the USB drive) to see Googlebook
-run before touching the internal disk.
+Unplug it again before step 4 (it carries the same partition labels).
 
 ### 3. Install beside Fedora
-With the external drive plugged in (it is only read):
+Straight from the built image (attached read-only, detached again at the end):
 ```sh
-sh tools/install_internal.sh          # dry run: shows the layout computed from your disk and every command
-sh tools/install_internal.sh --run    # asks before each step: y continues, anything else stops
+IMG=$(ls dist/gbOS86-looper-*.img | tail -1)
+sh tools/install_internal.sh --image "$IMG"          # dry run: shows the layout computed from your disk and every command
+sh tools/install_internal.sh --run --image "$IMG"    # asks before each step: y continues, anything else stops
 ```
-It shrinks Fedora's btrfs and partition, adds GBOSSYS / GBOS_META / GBOS_DATA, copies the system from the external drive
+It shrinks Fedora's btrfs and partition, adds GBOSSYS / GBOS_META / GBOS_DATA, copies the system from the image
 (compared file by file), puts the kernel in `EFI/gbos/` on Fedora's EFI partition and adds the "Googlebook (internal)"
 firmware entry with the quiet options. Details and recovery: [docs/install-internal.md](docs/install-internal.md).
 
 ### 4. First boot
-1. **Unplug the external drive** (both disks carry the same labels).
+1. If a gbOS86 USB drive is plugged in, **unplug it** (same labels).
 2. Restart, **F12** → *Googlebook (internal)*.
 3. Googlebook's setup runs (fresh `/data`): sign in, set a lock-screen PIN or password (needed for the fingerprint), then
    Settings → Security → Fingerprint. During enrollment, lift and move the finger slightly between touches.

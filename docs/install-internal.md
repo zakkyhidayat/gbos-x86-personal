@@ -31,7 +31,7 @@ SIZE_GIB=72 ...                       # the space for gbOS86 (default 72)
 | 2 | Shrink Fedora's partition (`sfdisk -N`, `partx -u`) | Only if btrfs is confirmed at or below the target size |
 | 3 | Add GBOSSYS, GBOS_META, GBOS_DATA, 1 MiB aligned | |
 | 4 | Make the filesystems, as gbOS86's own installer does (`GBOS_DATA` with `-m 0 -O verity`) | |
-| 5 | Copy `gbos/` (without logs and backups) and `busybox` from the external drive | Every file compared afterwards; the external drive is only read |
+| 5 | Copy `gbos/` (without logs and backups) and `busybox` from the built image (`--image`, attached read-only) or a plugged-in gbOS86 drive | Every file compared afterwards; the source is only read |
 | 6 | Copy the kernel to `EFI/gbos/BOOTX64.EFI` on Fedora's EFI partition | Compared afterwards |
 | 7 | Add the "Googlebook (internal)" boot entry with the quiet options, after Fedora | Named apart from the SSD's "Googlebook"; `tools/grub/install_grub.sh` later removed the SSD's and renamed this one "Googlebook" |
 

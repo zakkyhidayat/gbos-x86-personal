@@ -2,19 +2,25 @@
 # Put gbOS86 on the internal disk BESIDE the running Fedora (dual boot), from Fedora itself:
 #   1. shrink Fedora's btrfs (online) and then its partition, freeing SIZE_GIB at the end of the disk
 #   2. add GBOSSYS (FAT32, 8 GiB), GBOS_META (ext4, 64 MiB), GBOS_DATA (ext4, the rest) there, found by label as on the SSD
-#   3. copy gbos/ (system image, scripts, modules, firmware) from the external gbOS86 drive; /data starts empty (fresh setup)
+#   3. copy gbos/ (system image, scripts, modules, firmware) from the built image (--image) or an external gbOS86 drive;
+#      /data starts empty (fresh setup)
 #   4. the kernel goes to Fedora's EFI partition as EFI/gbos/BOOTX64.EFI (Fedora's updates never touch that folder)
 #   5. a firmware boot entry "Googlebook (internal)" with the quiet options, after Fedora in the boot order
 #
-#   sh tools/install_internal.sh            dry run: shows the computed layout and every command, changes nothing
-#   sh tools/install_internal.sh --run      does it, asking before each step (sudo for the disk steps)
+#   sh tools/install_internal.sh [--image IMG]          dry run: shows the computed layout and every command, changes nothing
+#   sh tools/install_internal.sh --run [--image IMG]    does it, asking before each step (sudo for the disk steps)
+# --image dist/gbOS86-looper-*.img (from ./build.sh --looper): no external drive needed; the image is attached read-only
+# (udisksctl loop-setup -r) and detached again at the end. Without --image, a plugged-in gbOS86 drive is the source.
 #
-# Afterwards: boot Googlebook with the external drive UNPLUGGED (both disks carry the same labels).
+# Afterwards: boot Googlebook with any external gbOS86 drive UNPLUGGED (it would carry the same labels).
 set -e
 SIZE_GIB=${SIZE_GIB:-72} SYS_GIB=8 META_MIB=64
 OPTS='quiet loglevel=1 printk.ignore_loglevel=0 vt.global_cursor_default=0 console=ttynull'
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-RUN=; [ "$1" = --run ] && RUN=1
+RUN=; IMG=
+while [ $# -gt 0 ]; do
+  case "$1" in --run) RUN=1;; --image) IMG=$2; shift;; *) echo "install_internal: unknown option $1" >&2; exit 1;; esac; shift
+done
 die() { echo "install_internal: $*" >&2; exit 1; }
 step() {  # step "what" command...   dry run: print; --run: ask, then run
   echo; echo "== $1"; shift; echo "   \$ $*"
@@ -65,8 +71,20 @@ ESPDEV=$(findmnt -no SOURCE /boot/efi); ESPNUM=$(cat /sys/class/block/$(basename
 KERNEL=$HERE/usb/out/BOOTX64.EFI; [ -f "$KERNEL" ] || die "no $KERNEL"
 
 # --- the source: the external gbOS86 drive's GBOSSYS (only read)
-SRC=$(lsblk -rno PATH,LABEL | awk -v d="$DISK" '$2 == "GBOSSYS" && index($1, d) != 1 { print $1 }')
-[ -n "$SRC" ] || die "plug in the external gbOS86 drive (its GBOSSYS partition is the source)"
+LOOP=
+if [ -n "$IMG" ]; then
+  # the built image, attached read-only; its GBOSSYS partition is the source
+  [ -f "$IMG" ] && [ -r "$IMG" ] || die "cannot read $IMG"
+  LOOP=$(udisksctl loop-setup -r -f "$IMG" | sed -n 's/.* as \(\/dev\/loop[0-9]*\)\.*$/\1/p')
+  [ -b "$LOOP" ] || die "could not attach $IMG"
+  trap 'S=$(lsblk -rno PATH,LABEL "$LOOP" 2>/dev/null | awk '"'"'$2=="GBOSSYS"{print $1}'"'"'); [ -n "$S" ] && udisksctl unmount -b "$S" >/dev/null 2>&1; udisksctl loop-delete -b "$LOOP" >/dev/null 2>&1' EXIT
+  i=0; until [ -n "$(lsblk -rno PATH,LABEL "$LOOP" | awk '$2=="GBOSSYS"')" ] || [ $i -ge 10 ]; do sleep 1; i=$((i + 1)); done
+  SRC=$(lsblk -rno PATH,LABEL "$LOOP" | awk '$2 == "GBOSSYS" { print $1 }')
+  [ -n "$SRC" ] || die "$IMG has no GBOSSYS partition"
+else
+  SRC=$(lsblk -rno PATH,LABEL | awk -v d="$DISK" '$2 == "GBOSSYS" && index($1, d) != 1 { print $1 }')
+  [ -n "$SRC" ] || die "no source: give --image dist/gbOS86-looper-*.img, or plug in a gbOS86 drive"
+fi
 SRCMNT=$(findmnt -no TARGET "$SRC" || true)
 [ -n "$SRCMNT" ] || { udisksctl mount -b "$SRC" -o ro >/dev/null; SRCMNT=$(findmnt -no TARGET "$SRC"); }
 [ -f "$SRCMNT/gbos/super.img" ] || die "$SRC has no gbos/super.img"
