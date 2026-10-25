@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw the "Googlebook VM" launcher icon: a flat laptop with a wallpaper on its screen, 256x256, transparent background.
+"""Draw a "Googlebook VM" launcher icon (install_launcher.sh WALLPAPER uses it; the shipped icon is googlebook-vm.png): a flat laptop with a wallpaper on its screen, 256x256, transparent background.
   python3 make_icon.py WALLPAPER OUT.png
 """
 import sys

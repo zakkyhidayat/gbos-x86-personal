@@ -1,15 +1,18 @@
 #!/bin/sh
-# Install the "Googlebook VM" app launcher for this user: the icon (make_icon.py, from a wallpaper you provide; the wallpaper
-# is not in this repo) and ~/.local/share/applications/googlebook-vm.desktop, which runs tools/run_vm.sh without a terminal
-# (run_vm.sh then asks once through GNOME's polkit dialog).
-#   sh tools/launcher/install_launcher.sh [WALLPAPER]     default: ~/Downloads/aluminium-os-stock-3636x3636-26364.jpeg
+# Install the "Googlebook VM" app launcher for this user: ~/.local/share/applications/googlebook-vm.desktop, which runs
+# tools/run_vm.sh without a terminal (run_vm.sh then asks once through GNOME's polkit dialog), with the icon in this folder.
+#   sh tools/launcher/install_launcher.sh                 use googlebook-vm.png from this folder
+#   sh tools/launcher/install_launcher.sh WALLPAPER       draw a new icon with make_icon.py, WALLPAPER on the laptop's screen
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd); RUNVM=$(cd "$HERE/.." && pwd)/run_vm.sh
-WP=${1:-$HOME/Downloads/aluminium-os-stock-3636x3636-26364.jpeg}
 D=$HOME/.local/share/googlebook-vm; APP=$HOME/.local/share/applications/googlebook-vm.desktop
-[ -f "$WP" ] || { echo "no wallpaper at $WP (give its path as the first argument)"; exit 1; }
 mkdir -p "$D" "$(dirname "$APP")"
-python3 -I "$HERE/make_icon.py" "$WP" "$D/googlebook-vm.png"
+if [ -n "$1" ]; then
+  [ -f "$1" ] || { echo "no wallpaper at $1"; exit 1; }
+  python3 -I "$HERE/make_icon.py" "$1" "$D/googlebook-vm.png"
+else
+  cp "$HERE/googlebook-vm.png" "$D/googlebook-vm.png"
+fi
 cat > "$APP" <<DESKTOP
 [Desktop Entry]
 Type=Application
