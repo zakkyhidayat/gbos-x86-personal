@@ -1,5 +1,5 @@
 diff --git a/.gitignore b/.gitignore
-index 6ba0d9c..6267106 100644
+index 6ba0d9c..1c7527a 100644
 --- a/.gitignore
 +++ b/.gitignore
 @@ -24,6 +24,7 @@
@@ -20,6 +20,11 @@ index 6ba0d9c..6267106 100644
  *.o
  __pycache__/
  
+@@ -72,3 +76,4 @@ __pycache__/
+ # (the kernel only accepts a manager APK with the official signing certificate)
+ /usb/ksu/manager.apk
+ /usb/ksu/ksud
++/vm-gpu/out/
 diff --git a/README.md b/README.md
 index 56b5acc..db39f95 100644
 --- a/README.md
@@ -191,7 +196,7 @@ index e0cdb85..cda6cc0 100644
 +DEVICE_BRAND="LENOVO"
 +DEVICE_MODEL="ThinkPad X13 Gen 2i"
 diff --git a/usb/hook.sh b/usb/hook.sh
-index 49cf0a2..7a7b290 100644
+index 49cf0a2..6084831 100644
 --- a/usb/hook.sh
 +++ b/usb/hook.sh
 @@ -89,6 +89,38 @@ else
@@ -233,7 +238,27 @@ index 49cf0a2..7a7b290 100644
  # --- software rendering for GPUs Google's image has no driver for (AMD) -- gbos_gpu_* functions ---
  # Google's image renders through ANGLE -> Vulkan, and its only Vulkan driver is Intel's ANV (/vendor/lib64/hw/vulkan.intel.so);
  # buffers come from minigbm (gralloc, /vendor/lib64/libminigbm_gralloc.so), which has no amdgpu backend. On a laptop whose GPU
-@@ -180,7 +212,9 @@ gbos_gpu_decide ${GPU_WAIT:-25}
+@@ -157,7 +189,11 @@ gbos_gpu_vulkan() {
+   case "${GPU_VULKAN:-auto}" in
+     swiftshader) echo swiftshader; return 0;;
+     radv) echo radv; return 0;;
++    venus) echo venus; return 0;;
+   esac
++  # Venus (Vulkan over virtio-gpu, drawn by the host's GPU): only in a VM whose virtio GPU reports 3D ("features: +virgl", i.e.
++  # QEMU's virtio-vga-gl); vm-gpu/ builds the driver. Never on real hardware.
++  if [ -f "$G/patched/vulkan.venus.so" ] && dmesg | grep -q 'features: +virgl'; then echo venus; return 0; fi
+   if [ -f "$G/patched/vulkan.radv.so" ] && gbos_gpu_cards | grep -q ' amdgpu$'; then echo radv; else echo swiftshader; fi
+ }
+ # (a) gralloc: minigbm gets a backend for DRM driver "amdgpu" (linear dumb buffers); libgbm (camera/codec HALs) likewise.
+@@ -169,6 +205,7 @@ gbos_gpu_enable() {
+   # RADV (Mesa's AMD Vulkan driver, tools/radv-android/build.sh) when it is on the stick and an amdgpu card is bound; otherwise (or when it
+   # cannot be bound) SwiftShader. GPU_VULKAN in gbos.cfg: auto (default), radv, swiftshader.
+   if [ "$(gbos_gpu_vulkan)" = radv ] && gbos_gpu_bind "Vulkan driver (RADV, AMD GPU)" vulkan.radv.so $V/lib64/hw/vulkan.intel.so $GBOS_VKINTEL_SHA; then :
++  elif [ "$(gbos_gpu_vulkan)" = venus ] && gbos_gpu_bind "Vulkan driver (Venus, host GPU through virtio-gpu)" vulkan.venus.so $V/lib64/hw/vulkan.intel.so $GBOS_VKINTEL_SHA; then :
+   else gbos_gpu_bind "Vulkan driver (SwiftShader, CPU)" vulkan.swiftshader.so $V/lib64/hw/vulkan.intel.so $GBOS_VKINTEL_SHA || GPU_SW=0
+   fi
+ }
+@@ -180,7 +217,9 @@ gbos_gpu_decide ${GPU_WAIT:-25}
  
  # drm.debug=0x04 (KMS only; not ATOMIC, which logs every frame): i915 dumps gamma/CSC mode and range per modeset while
  # drm_hwcomposer first sets up the panel. gbos.rc turns it off at boot_completed. Washed-out colours.
@@ -244,7 +269,7 @@ index 49cf0a2..7a7b290 100644
  
  # Fake ChromeOS boot disk for the boot HAL: misc + vbmeta_a/vbmeta_b with cgpt slot attributes.
  if [ -f $G/bootdisk.img ]; then
-@@ -213,9 +247,34 @@ gbos_touchpads() {
+@@ -213,9 +252,34 @@ gbos_touchpads() {
      if (name ~ /touchpad|trackpad/ && bus != "0003" && v != "" && p != "") print tolower(v) ":" tolower(p)
    }' ${INPUTS:-/proc/bus/input/devices} 2>/dev/null | sort -u
  }
@@ -279,7 +304,7 @@ index 49cf0a2..7a7b290 100644
    # RESOLUTION in gbos.cfg: logical display size (e.g. 2400x1350) that SurfaceFlinger renders at and the
    # display hardware scales to the 1920x1080 panel, so everything looks smaller with stock density.
    case "$RESOLUTION" in [0-9]*x[0-9]*) WMSIZE=$RESOLUTION;; *) WMSIZE=reset;; esac
-@@ -240,6 +299,28 @@ if mount --bind /gbos /new/postinstall; then
+@@ -240,6 +304,28 @@ if mount --bind /gbos /new/postinstall; then
      mkdir /data/system/devices 0775 system system
      mkdir /data/system/devices/idc 0775 system system$IDCRC"
    fi
@@ -308,7 +333,7 @@ index 49cf0a2..7a7b290 100644
    cat > /tmp/sysinit/gbos.rc <<RC
  # Rotate at 1 MB: on this stick, data written past ~4 MB of a file that stays open never reaches
  # the FAT cluster chain before power-off (fsck: "size ... should at most be 4046848"). Rotating
-@@ -296,6 +377,7 @@ on property:sys.boot_completed=1
+@@ -296,6 +382,7 @@ on property:sys.boot_completed=1
      start gbos_displaydiag
      start gbos_aidiag
      start gbos_ksu
@@ -316,7 +341,7 @@ index 49cf0a2..7a7b290 100644
  
  # AI diagnostics (Magic Pointer / AICore): usb/aidiag.sh writes logs/boot-N/ai-1.txt (90 s) and ai-2.txt (4 min).
  # The gbos_aidns_* services run one ping per app uid so aidiag can compare DNS as AICore (10107) with
-@@ -387,6 +469,10 @@ service gbos_soft_gk /postinstall/gbos/soft_gk
+@@ -387,6 +474,10 @@ service gbos_soft_gk /postinstall/gbos/soft_gk
      seclabel u:r:hal_gatekeeper_default:s0
      interface aidl android.hardware.gatekeeper.IGatekeeper/default
  
@@ -327,7 +352,7 @@ index 49cf0a2..7a7b290 100644
  # Trusty security VM (KeyMint/Gatekeeper TEE) as a plain KVM VM: no pKVM on this laptop.
  # vendor/build.prop's protected_vm.supported=1 is hidden (see below), so the launcher falls back
  # to a non-protected VM; servicemanager starts it on demand for the KeyMint accessors.
-@@ -435,6 +521,15 @@ on post-fs-data
+@@ -435,6 +526,15 @@ on post-fs-data
      # KernelSU: the daemon has to be in /data/adb before the kernel's own init.rc runs it.
      start gbos_ksu
  RC
@@ -343,7 +368,7 @@ index 49cf0a2..7a7b290 100644
    # Conscrypt (and identical) APEX libcrypto: the APEX is signed, so patch a copy and bind it over the
    # original once apexd has activated every APEX (init.rc's "wait_for_prop apexd.status activated" is in
    # on post-fs-data, before zygote-start). See apex_patch.sh.
-@@ -490,6 +585,33 @@ DROP='^ro.boot.hypervisor.protected_vm.supported=|^ro.surface_flinger.has_wide_c
+@@ -490,6 +590,33 @@ DROP='^ro.boot.hypervisor.protected_vm.supported=|^ro.surface_flinger.has_wide_c
    fi
  } > /tmp/vendor.build.prop && mount --bind /tmp/vendor.build.prop /new/vendor/build.prop \
    && log "hook: vendor build.prop: protected_vm.supported hidden, sRGB-only display, lcd_density=${DENSITY:-stock}, software GPU props=${GPU_SW:-0}"
@@ -377,7 +402,7 @@ index 49cf0a2..7a7b290 100644
  # Only one Trusty VM may own CID 200: drop the plain launcher's auto-start so the on-demand
  # (accessor-registering) launcher runs it, falling back to non-protected by itself.
  R=/new/system_ext/etc/init/desktop-trusty_security_vm_launcher.rc
-@@ -539,8 +661,12 @@ fi
+@@ -539,8 +666,12 @@ fi
  # "repairs" the FAT while stage0 has it mounted (LOST.DIR, lost/truncated logs, cross-linked
  # clusters). The stick must only ever be mounted by stage0.
  F=/new/vendor/etc/fstab.android-desktop
@@ -392,7 +417,7 @@ index 49cf0a2..7a7b290 100644
  # Audio: the audio HAL (dras) needs a config whose <soundcard> equals the ALSA card id. Google ships only its SOF
  # SoundWire card; gbos/audio/gbos-hda-pch is the legacy-HDA one (card id PCH, true for nearly every Intel PCH HDA
  # laptop). For any other main card (SOF: sof-hda-dsp, sof-rt5682, ...) a copy is generated with that card's id and
-@@ -600,12 +726,21 @@ if [ -f $G/audio/gbos-hda-pch/audio_config.xml ]; then
+@@ -600,12 +731,21 @@ if [ -f $G/audio/gbos-hda-pch/audio_config.xml ]; then
  fi
  # apgetty (UART shell) has no UART configured here and crash-loops
  : > /tmp/empty.rc && mount --bind /tmp/empty.rc /new/system_ext/etc/init/apgetty.rc && log "hook: apgetty disabled"

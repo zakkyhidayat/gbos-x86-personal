@@ -23,7 +23,17 @@ Host: Fedora has virglrenderer 1.3 (Venus) and QEMU 11.1 (`virtio-vga-gl,venus=o
 5. **`run_vm.sh --gpu`**, docs, measure smoothness.
 Known risk: chaitan3/gbos-vm-linux used VirGL (GL) for SurfaceFlinger rather than Venus, so phase 3-4 may need that route.
 
-Status: **phase 1 done**: `libvulkan_virtio.so` builds (ELF x86-64, Android 34, NDK r30, 1.6 MB; needs libdrm.so, libhardware.so,
-liblog.so, libnativewindow.so, libsync.so from the guest). Fixes found on the way: `:z` on the docker mounts (Fedora's SELinux),
-`-Dallow-fallback-for=libdrm` (builds libdrm from Mesa's wrap, hash-pinned by Mesa), libdrm's GPU backends off.
-It exports the `HMI` hw-module symbol Android's Vulkan loader uses (plus the ICD entry points). Not yet checked: that it loads in the guest at all (phase 2).
+Status: **phases 1-2 done, phase 3-4 blocked on buffer sharing.**
+- Phase 1: `libvulkan_virtio.so` builds (ELF x86-64, Android 34, NDK r30, 1.6 MB; `HMI` symbol present).
+- Phase 2 (tested in QEMU `virtio-vga-gl,blob=on,venus=on,hostmem=2G -display egl-headless` + memfd memory backend, test image
+  from the internal install's files): `hook.sh` bound it over `vulkan.intel.so`, and the host's `virgl_render_server` created
+  Venus contexts for bootanimation and surfaceflinger: the driver loads and talks to the host GPU.
+- Phase 3-4 fails: every frame, `vk_common_GetAndroidHardwareBufferPropertiesANDROID` -> `vn_get_memory_dma_buf_properties` ->
+  host `vkGetMemoryResourcePropertiesMESA: invalid res_id`, then `vkCreateDevice` fails in SurfaceFlinger ("failed to do deferred
+  gralloc buffer bind", 17k times). Android's gralloc (minigbm) hands Venus dma-bufs that are plain virtio-gpu 2D/dumb resources;
+  Venus can only import blob resources the host knows. The screen stays "Display output is not active".
+- Way forward (not done): make minigbm allocate blob resources (its virtio-gpu cross-domain path), which is Google's prebuilt
+  binary, or take chaitan3/gbos-vm-linux's route (VirGL GL for SurfaceFlinger + Venus for apps, with its Mesa gralloc patch).
+  Either is a patch-the-guest-graphics-stack project, not a driver swap.
+The `venus` choice in `hook.sh` stays: it only triggers with a virgl-capable virtio GPU and `gbos/patched/vulkan.venus.so`, which
+is not shipped, so nothing changes until the buffer problem is solved.
