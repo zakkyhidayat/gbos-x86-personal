@@ -12,7 +12,7 @@ Base: upstream `729b9c3` (kernel #42 `6.18.21-gbos-whl`, module tree r5, release
 
 | | | Details |
 |---|---|---|
-| **Lenovo identity** | Settings shows *ThinkPad X13 Gen 2i* / *LENOVO* instead of *ASUS Googlebook 14* (known issue: the build fingerprint follows) | [docs/identity.md](docs/identity.md) |
+| **Lenovo identity** | Settings shows *ThinkPad X13 Gen 2i* / *LENOVO* instead of *ASUS Googlebook 14*; the build fingerprint stays Google's ASUS one | [docs/identity.md](docs/identity.md) |
 | **Fingerprint reader** | A new `IFingerprint` HAL for the Synaptics match-on-chip sensor: enroll, unlock, lockout (WEAK class) | [docs/fingerprint.md](docs/fingerprint.md) |
 | **Boot menu** | Fedora's GRUB as a Material 3 menu for Fedora and Googlebook | [docs/grub.md](docs/grub.md) |
 | **Quiet, fast boot** | 67.6 s → 29.2 s to `boot_completed`; no kernel text from power-on to the Googlebook animation, none at shutdown | [docs/boot.md](docs/boot.md) |
@@ -119,7 +119,7 @@ Then [docs/install-internal.md](docs/install-internal.md) to put it beside Fedor
 | Internal dual boot beside Fedora | works (first boot: setup, 3 fingers enrolled) |
 | GRUB menu with the Material 3 theme | installed (`grub.cfg` has the entry and theme); first boot with it not seen yet |
 | Firmware entries: Fedora, Googlebook (SSD's removed) | done |
-| Build fingerprint stays ASUS | **no**: see [docs/identity.md](docs/identity.md#known-issue-build-fingerprint) |
+| Build fingerprint stays ASUS | fixed in `hook.sh` (was LENOVO); next boot not checked yet ([docs/identity.md](docs/identity.md#build-fingerprint)) |
 
 ## Credits and licences
 - [linuxkid473/gbos-x86](https://github.com/linuxkid473/gbos-x86) (gbOS86): everything this builds on.

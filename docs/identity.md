@@ -23,10 +23,16 @@ partition: `hook: identity /new/vendor/build.prop: brand=LENOVO model=ThinkPad X
 `tools/test_device_model.sh` (in the patch) runs the rewrite on sample `build.prop` files with a non-ASUS name ("Acme"), and
 checks the refused characters.
 
-## Known issue: build fingerprint
-The internal install's first boot log has `init: Setting property 'ro.build.fingerprint' to
-'LENOVO/lapis/lapis:17/CL3B.260622.271.R1/16452207:user/release-keys'`. Google's build does not set `ro.build.fingerprint`
-itself, so init composes it from `ro.product.brand` and friends, which the rewrite changed to LENOVO: against the intent
-above. (The per-partition `ro.<partition>.build.fingerprint` values are not checked yet.) Google services may then see the
-device as uncertified. Fix (not done yet): set `ro.build.fingerprint` explicitly to the ASUS value
-in the rewritten vendor build.prop.
+## Build fingerprint
+No partition of lapis sets `ro.build.fingerprint`, so init composes it from `ro.product.brand` and friends. With the brand
+rewritten, the first internal boot had `ro.build.fingerprint=LENOVO/lapis/lapis:17/CL3B.260622.271.R1/16452207:user/release-keys`,
+which Google does not know (the device could show as uncertified). Now, when `DEVICE_BRAND` is set and nothing sets
+`ro.build.fingerprint`, `hook.sh` appends it to the rewritten product `build.prop`, taken from that partition's own
+`ro.product.build.fingerprint`:
+
+```
+ro.build.fingerprint=ASUS/lapis/lapis:17/CL3B.260622.271.R1/16452207:user/release-keys
+```
+Checked by running the block on lapis's real `build.prop` files; the boot log shows
+`hook: identity: ro.build.fingerprint=ASUS/...`. `tools/test_device_model.sh` covers it, and that nothing is added when a
+partition already sets it or the brand is unchanged.

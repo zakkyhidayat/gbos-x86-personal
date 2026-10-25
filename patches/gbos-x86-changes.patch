@@ -90,10 +90,10 @@ index 7cd63ff..558b012 100755
  done
  for d in firmware patched audio installer kmod modules surface ksu; do cp -R "$U/$d" "$G/$d"; done
 diff --git a/tools/test_device_model.sh b/tools/test_device_model.sh
-index 860faec..3d75d85 100755
+index 860faec..b27526a 100755
 --- a/tools/test_device_model.sh
 +++ b/tools/test_device_model.sh
-@@ -39,6 +39,31 @@ grep -q '^ro.product.vendor.model=Lapis$' "$W/out.prop" && grep -q '^ro.product.
+@@ -39,6 +39,39 @@ grep -q '^ro.product.vendor.model=Lapis$' "$W/out.prop" && grep -q '^ro.product.
  grep -q '^ro.product.model=' "$W/out.prop" && bad "ro.product.model added although DEVICE_MODEL unset" || ok "DEVICE_MODEL unset: no ro.product.model added"
  grep -q '^ro.sf.lcd_density=180$' "$W/out.prop" && ok "DENSITY still applied" || bad "DENSITY not applied"
  
@@ -114,7 +114,15 @@ index 860faec..3d75d85 100755
 +[ "$(allprops | grep -c '\.brand=LENOVO$')" = 7 ] && [ "$(allprops | grep -c '\.manufacturer=LENOVO$')" = 7 ] && ok "identity: brand/manufacturer replaced in all 7 partitions, whatever the old value" || bad "identity: brand not replaced everywhere"
 +[ "$(allprops | grep -c '\.model=ThinkPad X13 Gen 2i$')" = 7 ] && ok "identity: model replaced in all 7 partitions" || bad "identity: model not replaced everywhere"
 +allprops | grep 'Acme' | grep -qv 'fingerprint=' && bad "identity: an old name survived outside the fingerprints" || ok "identity: no old name left except in fingerprints"
-+[ "$(allprops | grep -c 'fingerprint=Acme/lapis')" = 7 ] && [ "$(allprops | grep -c '\.device=lapis$')" = 7 ] && ok "identity: fingerprints and device=lapis untouched" || bad "identity: fingerprint or device changed"
++[ "$(allprops | grep '^ro\.[a-z_]*\.build\.fingerprint=' | grep -c '=Acme/lapis')" = 7 ] && [ "$(allprops | grep -c '\.device=lapis$')" = 7 ] && ok "identity: fingerprints and device=lapis untouched" || bad "identity: fingerprint or device changed"
++[ "$(grep -c '^ro\.build\.fingerprint=Acme/lapis/lapis:17/X/1:user/release-keys$' "$W/new/product/etc/build.prop")" = 1 ] && [ "$(allprops | grep -c '^ro\.build\.fingerprint=')" = 1 ] \
++  && ok "identity: ro.build.fingerprint pinned once, to the product partition's own fingerprint" || bad "identity: ro.build.fingerprint not pinned (or more than once)"
++mkprops; mkdir -p "$W/new/system"; echo 'ro.build.fingerprint=Set/by/system' > "$W/new/system/build.prop"
++( log() { :; }; DEVICE_BRAND=LENOVO; DEVICE_MODEL=; . "$W/ident.sh" )
++allprops | grep -q '^ro\.build\.fingerprint=' && bad "identity: ro.build.fingerprint added although system sets it" || ok "identity: ro.build.fingerprint left alone when a partition already sets it"
++rm -rf "$W/new/system"; mkprops
++( log() { :; }; DEVICE_BRAND=; DEVICE_MODEL="X"; . "$W/ident.sh" )
++allprops | grep -q '^ro\.build\.fingerprint=' && bad "identity: ro.build.fingerprint added although the brand is unchanged" || ok "identity: brand unchanged, no ro.build.fingerprint added"
 +mkprops
 +( log() { :; }; DEVICE_BRAND=; DEVICE_MODEL="Only Model"; . "$W/ident.sh" )
 +grep -q '^ro.product.product.brand=Acme$' "$W/new/product/etc/build.prop" && grep -q '^ro.product.product.model=Only Model$' "$W/new/product/etc/build.prop" && ok "identity: DEVICE_BRAND unset keeps the brand, model still replaced" || bad "identity: partial settings wrong"
@@ -183,7 +191,7 @@ index e0cdb85..cda6cc0 100644
 +DEVICE_BRAND="LENOVO"
 +DEVICE_MODEL="ThinkPad X13 Gen 2i"
 diff --git a/usb/hook.sh b/usb/hook.sh
-index 49cf0a2..f329370 100644
+index 49cf0a2..7a7b290 100644
 --- a/usb/hook.sh
 +++ b/usb/hook.sh
 @@ -89,6 +89,38 @@ else
@@ -335,7 +343,7 @@ index 49cf0a2..f329370 100644
    # Conscrypt (and identical) APEX libcrypto: the APEX is signed, so patch a copy and bind it over the
    # original once apexd has activated every APEX (init.rc's "wait_for_prop apexd.status activated" is in
    # on post-fs-data, before zygote-start). See apex_patch.sh.
-@@ -490,6 +585,25 @@ DROP='^ro.boot.hypervisor.protected_vm.supported=|^ro.surface_flinger.has_wide_c
+@@ -490,6 +585,33 @@ DROP='^ro.boot.hypervisor.protected_vm.supported=|^ro.surface_flinger.has_wide_c
    fi
  } > /tmp/vendor.build.prop && mount --bind /tmp/vendor.build.prop /new/vendor/build.prop \
    && log "hook: vendor build.prop: protected_vm.supported hidden, sRGB-only display, lcd_density=${DENSITY:-stock}, software GPU props=${GPU_SW:-0}"
@@ -357,11 +365,19 @@ index 49cf0a2..f329370 100644
 +      && mount --bind $N $P && log "hook: identity $P: brand=${DEVICE_BRAND:-Google's} model=${DEVICE_MODEL:-Google's}" \
 +      || log "hook: identity $P FAILED"
 +  done
++  # No partition sets ro.build.fingerprint itself, so init composes it from ro.product.brand: with the brand rewritten it became
++  # LENOVO/lapis/... Pin it to the product partition's own fingerprint (Google's ASUS one, left untouched above).
++  FP=$(sed -n 's/^ro\.product\.build\.fingerprint=//p' /new/product/etc/build.prop 2>/dev/null | tail -1)
++  if [ -n "$DEVICE_BRAND" ] && [ -n "$FP" ] && ! grep -qs '^ro\.build\.fingerprint=' /new/system/build.prop /new/product/etc/build.prop; then
++    # through the bind-mounted copy: the erofs original is read-only, so a failed rewrite above cannot be changed here
++    echo "ro.build.fingerprint=$FP" >> /new/product/etc/build.prop && log "hook: identity: ro.build.fingerprint=$FP" \
++      || log "hook: identity: ro.build.fingerprint FAILED"
++  fi
 +fi
  # Only one Trusty VM may own CID 200: drop the plain launcher's auto-start so the on-demand
  # (accessor-registering) launcher runs it, falling back to non-protected by itself.
  R=/new/system_ext/etc/init/desktop-trusty_security_vm_launcher.rc
-@@ -539,8 +653,12 @@ fi
+@@ -539,8 +661,12 @@ fi
  # "repairs" the FAT while stage0 has it mounted (LOST.DIR, lost/truncated logs, cross-linked
  # clusters). The stick must only ever be mounted by stage0.
  F=/new/vendor/etc/fstab.android-desktop
@@ -376,7 +392,7 @@ index 49cf0a2..f329370 100644
  # Audio: the audio HAL (dras) needs a config whose <soundcard> equals the ALSA card id. Google ships only its SOF
  # SoundWire card; gbos/audio/gbos-hda-pch is the legacy-HDA one (card id PCH, true for nearly every Intel PCH HDA
  # laptop). For any other main card (SOF: sof-hda-dsp, sof-rt5682, ...) a copy is generated with that card's id and
-@@ -600,12 +718,21 @@ if [ -f $G/audio/gbos-hda-pch/audio_config.xml ]; then
+@@ -600,12 +726,21 @@ if [ -f $G/audio/gbos-hda-pch/audio_config.xml ]; then
  fi
  # apgetty (UART shell) has no UART configured here and crash-loops
  : > /tmp/empty.rc && mount --bind /tmp/empty.rc /new/system_ext/etc/init/apgetty.rc && log "hook: apgetty disabled"
