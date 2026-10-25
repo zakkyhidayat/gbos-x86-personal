@@ -68,6 +68,17 @@ Mine (the rest are gbOS86's own and documented in the file):
 | `DEBUG_LOGS` | (0) | `1`: full logcat, KMS debug, audio/display/AI diagnostics |
 | `KVM_TRACE` | (0) | `1`: trace every exit of the Trusty VM (~30 MB per boot) |
 
+### App launcher
+**Googlebook VM** in the app menu runs `tools/run_vm.sh` with no terminal: one GNOME authorization dialog (fingerprint or
+password), then the VM window; errors show as notifications. Install or reinstall it with:
+```sh
+sh ~/Documents/gbos-x86/tools/launcher/install_launcher.sh [WALLPAPER]
+```
+The icon is a flat laptop with a wallpaper on its screen, drawn by `make_icon.py`. The wallpaper is not in this repo (it is
+someone else's image): it defaults to `~/Downloads/aluminium-os-stock-3636x3636-26364.jpeg` from
+[4kwallpapers.com](https://4kwallpapers.com/images/wallpapers/aluminium-os-stock-3636x3636-26364.jpeg). Installed files:
+`~/.local/share/applications/googlebook-vm.desktop` and `~/.local/share/googlebook-vm/googlebook-vm.png`.
+
 ## Repo layout
 
 | Path | What |
@@ -81,6 +92,7 @@ Mine (the rest are gbOS86's own and documented in the file):
 | `tools/install_internal.sh` | Dual boot beside Fedora (dry run by default) |
 | `tools/run_vm.sh` | Googlebook VM snapshot |
 | `tools/grub/` | `make_theme.py` (the googlebook-m3 theme), `googlebook-m3/` (generated), `install_grub.sh` |
+| `tools/launcher/` | `install_launcher.sh` (the "Googlebook VM" app launcher) and `make_icon.py` (its laptop icon) |
 | `tools/test_*.sh` | Checks: fingerprint wiring, Thunderbolt module, identity rewrite, quiet/fast boot |
 
 ## Build from scratch

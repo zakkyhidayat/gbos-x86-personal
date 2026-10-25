@@ -11,7 +11,7 @@ cd "$HERE"
 for f in fingerprint/build.sh fingerprint/gbos_fp.c fingerprint/syn.h fingerprint/syn_test.c \
 	 kernel/isa_emu_patch/build_extra_module.sh kernel/isa_emu_patch/virtio-gpu-dumb-rgba.patch kernel/symvers_from_modules.py \
 	 tools/test_boot_quiet.sh tools/test_gbos_fp.sh tools/test_tbnet.sh usb/gbos_fp usb/kmod/thunderbolt_net.ko usb/kmod/virtio_dma_buf.ko usb/kmod/virtio-gpu.ko tools/run_vm.sh tools/install_internal.sh usb/quiet_boot.sh usb/tbnet.sh \
-	 vm-gpu/README.md vm-gpu/versions.sh vm-gpu/fetch.sh vm-gpu/Dockerfile vm-gpu/build_venus.sh vm-gpu/container_build.sh vm-gpu/test_boot.sh tools/grub/make_theme.py tools/grub/install_grub.sh $(find tools/grub/googlebook-m3 -type f | sort); do
+	 vm-gpu/README.md vm-gpu/versions.sh vm-gpu/fetch.sh vm-gpu/Dockerfile vm-gpu/build_venus.sh vm-gpu/container_build.sh vm-gpu/test_boot.sh tools/launcher/make_icon.py tools/launcher/install_launcher.sh tools/grub/make_theme.py tools/grub/install_grub.sh $(find tools/grub/googlebook-m3 -type f | sort); do
   mkdir -p "$G/$(dirname "$f")"
   cp -p "$f" "$G/$f"
 done
