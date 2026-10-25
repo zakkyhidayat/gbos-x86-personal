@@ -7,7 +7,7 @@ mkdir -p "$CACHE"; cd "$CACHE"
 get() {  # get FILE URL ALGO HASH
   if [ -f "$1" ] && echo "$4  $1" | "$3sum" -c --quiet - 2>/dev/null; then echo "$1: present, $3 ok"; return; fi
   echo "$1: downloading $2"
-  curl -fL --retry 3 -o "$1.part" "$2"
+  curl -fsSL --retry 3 -o "$1.part" "$2"
   echo "$4  $1.part" | "$3sum" -c --quiet - || { echo "$1: $3 MISMATCH, removed"; rm -f "$1.part"; exit 1; }
   mv "$1.part" "$1"; echo "$1: $3 ok"
 }
