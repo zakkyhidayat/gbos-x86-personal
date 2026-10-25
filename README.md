@@ -24,6 +24,10 @@ Base: upstream `729b9c3` (kernel #42 `6.18.21-gbos-whl`, module tree r5, release
 
 ## How this laptop is set up
 
+![The boot menu: Fedora's GRUB with the googlebook-m3 Material 3 theme (rendered by GRUB 2.12 in QEMU at 1920x1200)](docs/img/grub.png)
+
+*The boot menu: Fedora's GRUB with the `googlebook-m3` Material 3 theme ([docs/grub.md](docs/grub.md)).*
+
 | Boot entry (F12) | What it boots |
 |---|---|
 | `Boot0001` Fedora (default) | GRUB → Fedora on `nvme0n1p3` (btrfs, 163.9 GiB) or Googlebook ([docs/grub.md](docs/grub.md)) |
@@ -70,6 +74,8 @@ Mine (the rest are gbOS86's own and documented in the file):
 | `KVM_TRACE` | (0) | `1`: trace every exit of the Trusty VM (~30 MB per boot) |
 
 ### App launcher
+<img src="tools/launcher/googlebook-vm.png" alt="Googlebook VM launcher icon" width="96" align="right">
+
 **Googlebook VM** in the app menu runs `tools/run_vm.sh` with no terminal: one GNOME authorization dialog (fingerprint or
 password), then the VM window; errors show as notifications. Install or reinstall it with:
 ```sh
