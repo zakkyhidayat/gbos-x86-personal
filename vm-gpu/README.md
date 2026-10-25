@@ -26,4 +26,4 @@ Known risk: chaitan3/gbos-vm-linux used VirGL (GL) for SurfaceFlinger rather tha
 Status: **phase 1 done**: `libvulkan_virtio.so` builds (ELF x86-64, Android 34, NDK r30, 1.6 MB; needs libdrm.so, libhardware.so,
 liblog.so, libnativewindow.so, libsync.so from the guest). Fixes found on the way: `:z` on the docker mounts (Fedora's SELinux),
 `-Dallow-fallback-for=libdrm` (builds libdrm from Mesa's wrap, hash-pinned by Mesa), libdrm's GPU backends off.
-Not yet checked: that it loads in the guest at all (phase 2), and the hw-module entry point Android's loader uses.
+It exports the `HMI` hw-module symbol Android's Vulkan loader uses (plus the ICD entry points). Not yet checked: that it loads in the guest at all (phase 2).
