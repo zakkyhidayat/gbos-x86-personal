@@ -14,6 +14,7 @@ Base: upstream `729b9c3` (kernel #42 `6.18.21-gbos-whl`, module tree r5, release
 |---|---|---|
 | **Lenovo identity** | Settings shows *ThinkPad X13 Gen 2i* / *LENOVO* instead of *ASUS Googlebook 14*; build fingerprint kept | [docs/identity.md](docs/identity.md) |
 | **Fingerprint reader** | A new `IFingerprint` HAL for the Synaptics match-on-chip sensor: enroll, unlock, lockout (WEAK class) | [docs/fingerprint.md](docs/fingerprint.md) |
+| **Boot menu** | Fedora's GRUB as a Material 3 menu for Fedora and Googlebook | [docs/grub.md](docs/grub.md) |
 | **Quiet, fast boot** | 67.6 s → 29.2 s to `boot_completed`; no kernel text from power-on to the Googlebook animation, none at shutdown | [docs/boot.md](docs/boot.md) |
 | **Dual boot beside Fedora** | Googlebook on the internal NVMe next to Fedora, own boot entry | [docs/install-internal.md](docs/install-internal.md) |
 | **Googlebook VM** | The installed Googlebook in a QEMU/KVM window from Fedora, as a throwaway snapshot, for testing apps | [docs/vm.md](docs/vm.md) |
@@ -24,9 +25,11 @@ Base: upstream `729b9c3` (kernel #42 `6.18.21-gbos-whl`, module tree r5, release
 
 | Boot entry (F12) | What it boots |
 |---|---|
-| `Boot0001` Fedora (default) | Fedora on `nvme0n1p3` (btrfs, 163.9 GiB) |
-| `Boot0000` **Googlebook (internal)** | `EFI/gbos/BOOTX64.EFI` on Fedora's EFI partition + `nvme0n1p4` GBOSSYS (8 GiB), `p5` GBOS_META, `p6` GBOS_DATA (63.9 GiB) |
-| `Boot0002` Googlebook | the external 128 GB SSD (Lexar E6): the first install, now a backup and a VM source |
+| `Boot0001` Fedora (default) | GRUB → Fedora on `nvme0n1p3` (btrfs, 163.9 GiB) or Googlebook ([docs/grub.md](docs/grub.md)) |
+| `Boot0000` **Googlebook** | `EFI/gbos/BOOTX64.EFI` on Fedora's EFI partition + `nvme0n1p4` GBOSSYS (8 GiB), `p5` GBOS_META, `p6` GBOS_DATA (63.9 GiB) |
+
+The external 128 GB SSD (Lexar E6) holds the first install: now a backup and a VM source, no longer a boot entry
+(`tools/grub/install_grub.sh` step 6 removes it and renames "Googlebook (internal)" to "Googlebook").
 
 > **The SSD and the internal install carry the same partition labels** (`GBOSSYS`, `GBOS_META`, `GBOS_DATA`) and gbOS86
 > finds its partitions by label. Boot Googlebook with the SSD **unplugged**; do not boot the SSD itself while the internal
@@ -39,7 +42,7 @@ Both Googlebook entries pass `quiet loglevel=1 printk.ignore_loglevel=0 vt.globa
 
 | Task | How |
 |---|---|
-| Boot Googlebook | Restart, **F12** → *Googlebook (internal)* |
+| Boot Googlebook | Pick *Googlebook* in the GRUB menu (or **F12** → *Googlebook*) |
 | Test an app in a VM (from Fedora) | `sh ~/Documents/gbos-x86/tools/run_vm.sh`, then `adb connect 127.0.0.1:5556` |
 | adb over Wi-Fi | USB debugging on in Developer options, then `adb connect <googlebook-ip>:5555` |
 | Change a boot option | `gbos/gbos.cfg` on the GBOSSYS partition ([below](#boot-options-gboscfg)) |
@@ -77,6 +80,7 @@ Mine (the rest are gbOS86's own and documented in the file):
 | `kernel/` | `build_extra_module.sh`, `symvers_from_modules.py`, `virtio-gpu-dumb-rgba.patch` |
 | `tools/install_internal.sh` | Dual boot beside Fedora (dry run by default) |
 | `tools/run_vm.sh` | Googlebook VM snapshot |
+| `tools/grub/` | `make_theme.py` (the googlebook-m3 theme), `googlebook-m3/` (generated), `install_grub.sh` |
 | `tools/test_*.sh` | Checks: fingerprint wiring, Thunderbolt module, identity rewrite, quiet/fast boot |
 
 ## Build from scratch
@@ -110,8 +114,10 @@ Then [docs/install-internal.md](docs/install-internal.md) to put it beside Fedor
 | Two crash loops stopped (`timberslide`, `suspend_diagnostics`) | in place, not re-measured |
 | `thunderbolt_net` loads; adb over a Thunderbolt cable | loads; cable not checked |
 | Googlebook VM: external SSD, colours, mouse | works |
-| Googlebook VM: internal install (`--internal`) | tested on images only |
-| Internal dual boot beside Fedora | installed, first boot not checked yet |
+| Googlebook VM: internal install (`--internal`) | ran on the real partitions, exited cleanly |
+| Internal dual boot beside Fedora | works (first boot: setup, 3 fingers enrolled) |
+| GRUB menu with the Material 3 theme | checked in QEMU; not installed yet |
+| Build fingerprint stays ASUS | **no**: see [docs/identity.md](docs/identity.md#known-issue-build-fingerprint) |
 
 ## Credits and licences
 - [linuxkid473/gbos-x86](https://github.com/linuxkid473/gbos-x86) (gbOS86): everything this builds on.

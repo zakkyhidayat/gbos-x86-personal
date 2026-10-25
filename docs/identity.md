@@ -22,3 +22,11 @@ partition: `hook: identity /new/vendor/build.prop: brand=LENOVO model=ThinkPad X
 ## Test
 `tools/test_device_model.sh` (in the patch) runs the rewrite on sample `build.prop` files with a non-ASUS name ("Acme"), and
 checks the refused characters.
+
+## Known issue: build fingerprint
+The internal install's first boot log has `init: Setting property 'ro.build.fingerprint' to
+'LENOVO/lapis/lapis:17/CL3B.260622.271.R1/16452207:user/release-keys'`. Google's build does not set `ro.build.fingerprint`
+itself, so init composes it from `ro.product.brand` and friends, which the rewrite changed to LENOVO: against the intent
+above. (The per-partition `ro.<partition>.build.fingerprint` values are not checked yet.) Google services may then see the
+device as uncertified. Fix (not done yet): set `ro.build.fingerprint` explicitly to the ASUS value
+in the rewritten vendor build.prop.
