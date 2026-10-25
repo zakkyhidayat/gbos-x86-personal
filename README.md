@@ -159,7 +159,7 @@ firmware entry with the quiet options. Details and recovery: [docs/install-inter
 ### 5. Optional extras
 | What | Command | Docs |
 |---|---|---|
-| Material 3 GRUB menu with Fedora and Googlebook; removes the external drive's entry and renames the internal one "Googlebook" | `sh tools/grub/install_grub.sh` then `--run` | [docs/grub.md](docs/grub.md) |
+| Material 3 GRUB menu with Fedora and Googlebook; renames the firmware entry to "Googlebook" (and removes a USB drive's gbOS86 entry, if any) | `sh tools/grub/install_grub.sh` then `--run` | [docs/grub.md](docs/grub.md) |
 | "Googlebook VM" app launcher (test apps from Fedora) | `sh tools/launcher/install_launcher.sh` | [docs/vm.md](docs/vm.md) |
 | adb over Wi-Fi | Developer options → USB debugging, then `adb connect <ip>:5555` | [docs/adb.md](docs/adb.md) |
 
