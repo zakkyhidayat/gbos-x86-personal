@@ -12,7 +12,7 @@ Base: upstream `729b9c3` (kernel #42 `6.18.21-gbos-whl`, module tree r5, release
 
 | | | Details |
 |---|---|---|
-| **Lenovo identity** | Settings shows *ThinkPad X13 Gen 2i* / *LENOVO* instead of *ASUS Googlebook 14*; build fingerprint kept | [docs/identity.md](docs/identity.md) |
+| **Lenovo identity** | Settings shows *ThinkPad X13 Gen 2i* / *LENOVO* instead of *ASUS Googlebook 14* (known issue: the build fingerprint follows) | [docs/identity.md](docs/identity.md) |
 | **Fingerprint reader** | A new `IFingerprint` HAL for the Synaptics match-on-chip sensor: enroll, unlock, lockout (WEAK class) | [docs/fingerprint.md](docs/fingerprint.md) |
 | **Boot menu** | Fedora's GRUB as a Material 3 menu for Fedora and Googlebook | [docs/grub.md](docs/grub.md) |
 | **Quiet, fast boot** | 67.6 s → 29.2 s to `boot_completed`; no kernel text from power-on to the Googlebook animation, none at shutdown | [docs/boot.md](docs/boot.md) |
@@ -35,8 +35,8 @@ The external 128 GB SSD (Lexar E6) holds the first install: now a backup and a V
 > finds its partitions by label. Boot Googlebook with the SSD **unplugged**; do not boot the SSD itself while the internal
 > install exists (it could mix the two). [docs/install-internal.md](docs/install-internal.md#the-external-ssd-now) has the details.
 
-Both Googlebook entries pass `quiet loglevel=1 printk.ignore_loglevel=0 vt.global_cursor_default=0 console=ttynull`
-(see [docs/boot.md](docs/boot.md)).
+The firmware entry and the GRUB entry both start Googlebook with `quiet loglevel=1 printk.ignore_loglevel=0
+vt.global_cursor_default=0 console=ttynull` (see [docs/boot.md](docs/boot.md)).
 
 ## Everyday
 
@@ -86,7 +86,8 @@ Mine (the rest are gbOS86's own and documented in the file):
 ## Build from scratch
 
 ```sh
-git clone https://github.com/linuxkid473/gbos-x86 && git -C gbos-x86 checkout 729b9c3
+# from this repo's folder; gbos-x86 goes next to it
+git clone https://github.com/linuxkid473/gbos-x86 ../gbos-x86 && git -C ../gbos-x86 checkout 729b9c3
 ./apply.sh ../gbos-x86
 cd ../gbos-x86
 sh tools/test_gbos_fp.sh && sh tools/test_tbnet.sh && sh tools/test_device_model.sh && sh tools/test_boot_quiet.sh
@@ -107,7 +108,7 @@ Then [docs/install-internal.md](docs/install-internal.md) to put it beside Fedor
 |---|---|
 | Boot on kernel #42 (#37 panicked on Tiger Lake) | works |
 | Settings > About: ThinkPad X13 Gen 2i, LENOVO | works |
-| Fingerprint enrollment in Settings | works (3 fingers on the SSD install) |
+| Fingerprint enrollment in Settings | works (3 fingers on the SSD install, 3 on the internal one after one failed try) |
 | Lock-screen unlock with a fingerprint | not checked yet |
 | Boot time 67.6 s → 29.2 s; boot entry with `quiet` hides the kernel text | works |
 | `console=ttynull` hides stage0's own messages | not checked yet |
@@ -116,13 +117,14 @@ Then [docs/install-internal.md](docs/install-internal.md) to put it beside Fedor
 | Googlebook VM: external SSD, colours, mouse | works |
 | Googlebook VM: internal install (`--internal`) | ran on the real partitions, exited cleanly |
 | Internal dual boot beside Fedora | works (first boot: setup, 3 fingers enrolled) |
-| GRUB menu with the Material 3 theme | checked in QEMU; not installed yet |
+| GRUB menu with the Material 3 theme | installed (`grub.cfg` has the entry and theme); first boot with it not seen yet |
+| Firmware entries: Fedora, Googlebook (SSD's removed) | done |
 | Build fingerprint stays ASUS | **no**: see [docs/identity.md](docs/identity.md#known-issue-build-fingerprint) |
 
 ## Credits and licences
 - [linuxkid473/gbos-x86](https://github.com/linuxkid473/gbos-x86) (gbOS86): everything this builds on.
 - [libfprint](https://gitlab.freedesktop.org/libfprint/libfprint): the Synaptics protocol ported in `fingerprint/syn.h`
-  (LGPL-2.1-or-later, as is `syn_test.c`). `gbos_fp.c` is Apache-2.0. The kernel modules and patch are GPL-2.0 (Linux).
+  (LGPL-2.1-or-later, as is `syn_test.c`). `gbos_fp.c` is Apache-2.0. The kernel modules and `virtio-gpu-dumb-rgba.patch` are GPL-2.0 (Linux).
 - [vthonte/gbos86-persistent-dualboot](https://github.com/vthonte/gbos86-persistent-dualboot): the idea of turning off
   `timberslide` and the `suspend_notification_service` / `suspend_diagnostics` loop on non-Chromebook hardware.
 - [chaitan3/gbos-vm-linux](https://github.com/chaitan3/gbos-vm-linux): reference for GPU-accelerated VMs (not used).

@@ -55,15 +55,16 @@ Idea from [vthonte/gbos86-persistent-dualboot](https://github.com/vthonte/gbos86
 services.
 
 ## Boot entries
-Made once from Linux with `efibootmgr`, which writes the laptop's firmware settings (not a disk). ThinkPad's F12 menu only
+Made once from Linux with `efibootmgr`, which writes the laptop's firmware settings (not a disk). Now: `Boot0001` Fedora
+(GRUB, with Googlebook in its menu: [grub.md](grub.md)) and `Boot0000` Googlebook. ThinkPad's F12 menu only
 lists entries that are in the boot order, so each one is put right after Fedora:
 
 ```sh
 OPTS='quiet loglevel=1 printk.ignore_loglevel=0 vt.global_cursor_default=0 console=ttynull'
-# internal install (tools/install_internal.sh does this): kernel on Fedora's EFI partition
-sudo efibootmgr -C -d /dev/nvme0n1 -p 1 -L 'Googlebook (internal)' -l '\EFI\gbos\BOOTX64.EFI' -u "$OPTS"
-# external drive: its own EFI partition
-sudo efibootmgr -C -d /dev/sda -p 1 -L Googlebook -l '\EFI\BOOT\BOOTX64.EFI' -u "$OPTS"
+# the internal install (now Boot0000 "Googlebook"): kernel on Fedora's EFI partition
+sudo efibootmgr -C -d /dev/nvme0n1 -p 1 -L Googlebook -l '\EFI\gbos\BOOTX64.EFI' -u "$OPTS"
+# an external drive (its own EFI partition); the SSD's entry was removed once the internal install existed
+sudo efibootmgr -C -d /dev/sda -p 1 -L 'Googlebook (SSD)' -l '\EFI\BOOT\BOOTX64.EFI' -u "$OPTS"
 sudo efibootmgr -o 0001,<new>,...          # keep Fedora (0001) first
 sudo efibootmgr -b <N> -B                  # remove an entry
 ```

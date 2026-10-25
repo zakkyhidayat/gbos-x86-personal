@@ -33,7 +33,7 @@ SIZE_GIB=72 ...                       # the space for gbOS86 (default 72)
 | 4 | Make the filesystems, as gbOS86's own installer does (`GBOS_DATA` with `-m 0 -O verity`) | |
 | 5 | Copy `gbos/` (without logs and backups) and `busybox` from the external drive | Every file compared afterwards; the external drive is only read |
 | 6 | Copy the kernel to `EFI/gbos/BOOTX64.EFI` on Fedora's EFI partition | Compared afterwards |
-| 7 | Add the "Googlebook (internal)" boot entry with the quiet options, after Fedora | |
+| 7 | Add the "Googlebook (internal)" boot entry with the quiet options, after Fedora | Named apart from the SSD's "Googlebook"; `tools/grub/install_grub.sh` later removed the SSD's and renamed this one "Googlebook" |
 
 **Resume:** if the three partitions already follow Fedora's in exactly this layout and are still unformatted (steps 1-3
 done), a rerun skips to step 4. Any other existing GBOS partitions make it refuse.
