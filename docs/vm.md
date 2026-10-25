@@ -27,6 +27,8 @@ adb -s 127.0.0.1:5556 install app.apk
   Wayland (`VM_DISPLAY=gtk` for its menus anyway).
 - **Graphics** are drawn on the CPU (SwiftShader): fine for apps, not smooth.
 - **Not in the VM:** fingerprint, Wi-Fi (Ethernet instead), Bluetooth ("keeps stopping" is expected), real sound.
+- **Screen stays on:** Android's screen timeout used to switch the virtio display off ("Display output is not active"). In a VM
+  only, `hook.sh` runs `svc power stayon true` and sets no timeout at boot (the laptop's own settings are not affected).
 - The `Gtk-WARNING … gtk.css` lines in the terminal are harmless: Fedora's QEMU loads its GTK module even for SDL.
 
 ## How it was made to work
