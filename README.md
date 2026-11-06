@@ -14,7 +14,6 @@ Base: upstream `729b9c3` (kernel #42 `6.18.21-gbos-whl`, module tree r5, release
 |---|---|---|
 | **Lenovo identity** | Settings shows *ThinkPad X13 Gen 2i* / *LENOVO* instead of *ASUS Googlebook 14*; the build fingerprint stays Google's ASUS one | [docs/identity.md](docs/identity.md) |
 | **Fingerprint reader** | A new `IFingerprint` HAL for the Synaptics match-on-chip sensor: enroll, unlock, lockout (WEAK class) | [docs/fingerprint.md](docs/fingerprint.md) |
-| **Boot menu** | Fedora's GRUB as a Material 3 menu for Fedora and Googlebook | [docs/grub.md](docs/grub.md) |
 | **Quiet, fast boot** | 67.6 s → 29.2 s to `boot_completed`; no kernel text from power-on to the Googlebook animation, none at shutdown | [docs/boot.md](docs/boot.md) |
 | **Dual boot beside Fedora** | Googlebook on the internal NVMe next to Fedora, own boot entry | [docs/install-internal.md](docs/install-internal.md) |
 | **Googlebook VM** | The installed Googlebook in a QEMU/KVM window from Fedora, as a throwaway snapshot, for testing apps; app-menu launcher, screen kept on, CPU drawing | [docs/vm.md](docs/vm.md) |
@@ -24,30 +23,25 @@ Base: upstream `729b9c3` (kernel #42 `6.18.21-gbos-whl`, module tree r5, release
 
 ## How this laptop is set up
 
-![The boot menu: Fedora's GRUB with the googlebook-m3 Material 3 theme (rendered by GRUB 2.12 in QEMU at 1920x1200)](docs/img/grub.png)
-
-*The boot menu: Fedora's GRUB with the `googlebook-m3` Material 3 theme ([docs/grub.md](docs/grub.md)).*
-
 | Boot entry (F12) | What it boots |
 |---|---|
-| `Boot0001` Fedora (default) | GRUB → Fedora on `nvme0n1p3` (btrfs, 163.9 GiB) or Googlebook ([docs/grub.md](docs/grub.md)) |
+| `Boot0001` Fedora (default) | Fedora on `nvme0n1p3` (btrfs, 163.9 GiB) |
 | `Boot0000` **Googlebook** | `EFI/gbos/BOOTX64.EFI` on Fedora's EFI partition + `nvme0n1p4` GBOSSYS (8 GiB), `p5` GBOS_META, `p6` GBOS_DATA (63.9 GiB) |
 
-The external 128 GB SSD (Lexar E6) holds the first install: now a backup and a VM source, no longer a boot entry
-(`tools/grub/install_grub.sh` step 6 removes it and renames "Googlebook (internal)" to "Googlebook").
+The external 128 GB SSD (Lexar E6) holds the first install: now a backup and a VM source, no longer a boot entry.
 
 > **The SSD and the internal install carry the same partition labels** (`GBOSSYS`, `GBOS_META`, `GBOS_DATA`) and gbOS86
 > finds its partitions by label. Boot Googlebook with the SSD **unplugged**; do not boot the SSD itself while the internal
 > install exists (it could mix the two). [docs/install-internal.md](docs/install-internal.md#the-external-ssd-now) has the details.
 
-The firmware entry and the GRUB entry both start Googlebook with `quiet loglevel=1 printk.ignore_loglevel=0
+The firmware entry starts Googlebook with `quiet loglevel=1 printk.ignore_loglevel=0
 vt.global_cursor_default=0 console=ttynull` (see [docs/boot.md](docs/boot.md)).
 
 ## Everyday
 
 | Task | How |
 |---|---|
-| Boot Googlebook | Pick *Googlebook* in the GRUB menu (or **F12** → *Googlebook*) |
+| Boot Googlebook | **F12** → *Googlebook* |
 | Test an app in a VM (from Fedora) | App menu → **Googlebook VM** (or `sh ~/Documents/gbos-x86/tools/run_vm.sh`), then `adb connect 127.0.0.1:5556` |
 | adb over Wi-Fi | USB debugging on in Developer options, then `adb connect <googlebook-ip>:5555` |
 | Change a boot option | `gbos/gbos.cfg` on the GBOSSYS partition ([below](#boot-options-gboscfg)) |
@@ -97,7 +91,6 @@ Installed files: `~/.local/share/applications/googlebook-vm.desktop` and `~/.loc
 | `kernel/` | `build_extra_module.sh`, `symvers_from_modules.py`, `virtio-gpu-dumb-rgba.patch` |
 | `tools/install_internal.sh` | Dual boot beside Fedora (dry run by default) |
 | `tools/run_vm.sh` | Googlebook VM snapshot |
-| `tools/grub/` | `make_theme.py` (the googlebook-m3 theme), `googlebook-m3/` (generated), `install_grub.sh` |
 | `tools/launcher/` | `install_launcher.sh` (the "Googlebook VM" app launcher) and its icon `googlebook-vm.png` |
 | `vm-gpu/` | GPU-accelerated VM work: pinned Mesa/NDK, `fetch.sh`, `build_venus.sh`, `test_boot.sh` (`GPU=cpu` for the normal VM) |
 | `tools/test_*.sh` | Checks: fingerprint wiring, Thunderbolt module, identity rewrite, quiet/fast boot |
@@ -112,8 +105,7 @@ writes to a disk or the firmware asks first; the scripts default to a dry run.
 - **Secure Boot off** (BIOS Setup → Security): the gbOS86 kernel is not signed.
 - About **50 GB free in Fedora** for the build (the image is ~41 GB, sparse). No external drive is needed; one is only
   useful to try Googlebook live from USB first (optional, step 2).
-- On Fedora: `git`, `docker` (gbos-x86's builds run in containers), `qemu-system-x86` + `edk2-ovmf` (only for the VM),
-  `grub2-tools` (already there); `python3-pillow` only to regenerate the GRUB theme.
+- On Fedora: `git`, `docker` (gbos-x86's builds run in containers), `qemu-system-x86` + `edk2-ovmf` (only for the VM).
 
 ### 1. Get the sources and apply this repo
 ```sh
@@ -159,12 +151,10 @@ firmware entry with the quiet options. Details and recovery: [docs/install-inter
 ### 5. Optional extras
 | What | Command | Docs |
 |---|---|---|
-| Material 3 GRUB menu with Fedora and Googlebook; renames the firmware entry to "Googlebook" (and removes a USB drive's gbOS86 entry, if any) | `sh tools/grub/install_grub.sh` then `--run` | [docs/grub.md](docs/grub.md) |
 | "Googlebook VM" app launcher (test apps from Fedora) | `sh tools/launcher/install_launcher.sh` | [docs/vm.md](docs/vm.md) |
 | adb over Wi-Fi | Developer options → USB debugging, then `adb connect <ip>:5555` | [docs/adb.md](docs/adb.md) |
 
 ### Undo
-- GRUB menu: [docs/grub.md](docs/grub.md#undo).
 - Googlebook on the internal disk: [docs/install-internal.md](docs/install-internal.md#removing-it) (deletes its data and
   gives the space back to Fedora).
 
@@ -193,7 +183,6 @@ firmware entry with the quiet options. Details and recovery: [docs/install-inter
 | Googlebook VM: internal install (`--internal`) | ran on the real partitions, exited cleanly |
 | "Googlebook VM" app launcher (no terminal: one polkit prompt, then the VM) | works |
 | Internal dual boot beside Fedora | works (first boot: setup, 3 fingers enrolled) |
-| GRUB menu with the Material 3 theme | installed (`grub.cfg` has the entry and theme); first boot with it not seen yet |
 | Firmware entries: Fedora, Googlebook (SSD's removed) | done |
 | Build fingerprint stays ASUS | fixed in `hook.sh` (was LENOVO); confirmed in a VM boot of the internal install's files: Android reports `ASUS/lapis/...` ([docs/identity.md](docs/identity.md#build-fingerprint)) |
 
