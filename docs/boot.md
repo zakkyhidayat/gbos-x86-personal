@@ -56,7 +56,7 @@ services.
 
 ## Boot entries
 Made once from Linux with `efibootmgr`, which writes the laptop's firmware settings (not a disk). Now: `Boot0001` Fedora
-(GRUB, with Googlebook in its menu: [grub.md](grub.md)) and `Boot0000` Googlebook. ThinkPad's F12 menu only
+and `Boot0000` Googlebook. ThinkPad's F12 menu only
 lists entries that are in the boot order, so each one is put right after Fedora:
 
 ```sh
